@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geometria analityczna</title>
+</head>
+<body>
+<script type="module">
+import { VizCore, T, COLORS } from '../lib/viz-core.js';
+import { GeoScene } from '../lib/geo-engine.js';
+
+const W = 600, H = 340;
+const SCALE = 45;
+const OX = 300, OY = 190;
+
+let scene;
+
+// ── Geo objects ─────────────────────────────────────────────────
+// Stage 0: Distance
+let A, B, segAB, distAB;
+// Stage 1: Midpoint
+let M;
+// Stage 2: Line through two points
+let lineAB;
+// Stage 3: Perpendicular bisector
+let bisector, bisM, segBis, rightAngle;
+// Sample point P on bisector + distance lines
+let P, segPA, segPB, distPA, distPB;
+
+let currentStage = -1;
+
+function setup(cx) {
+  scene = new GeoScene(cx, W, H, { originX: OX, originY: OY, scale: SCALE });
+
+  // ── Shared draggable points for all stages ──────────────────
+  A = scene.point(-2, 1, { drag: true, label: 'A', color: COLORS.GREEN, radius: 7 });
+  B = scene.point(3, -2, { drag: true, label: 'B', color: COLORS.ORANGE, radius: 7 });
+
+  // ── Stage 0: Distance ────────────────────────────────────────
+  segAB = scene.segment(A, B, { color: COLORS.CYAN, lineWidth: 2.5, glow: true });
+  distAB = scene.distance(A, B);
+
+  // ── Stage 1: Midpoint ────────────────────────────────────────
+  M = scene.midpoint(A, B, { label: 'M', color: COLORS.YELLOW, radius: 8 });
+
+  // ── Stage 2: Line ────────────────────────────────────────────
+  lineAB = scene.line(A, B, { color: COLORS.CYAN, lineWidth: 2, glow: true });
+
+  // ── Stage 3: Perpendicular bisector ──────────────────────────
+  bisM = scene.midpoint(A, B, { label: 'M', color: COLORS.CYAN, radius: 5 });
+  segBis = scene.segment(A, B, { color: 'rgba(255,255,255,0.3)', lineWidth: 1.5 });
+  bisector = scene.perpBisector(A, B, { color: COLORS.GREEN, lineWidth: 2.5, glow: true });
+
+  // Right angle marker: vertex = bisM, arm1 toward A, arm2 along bisector direction
+  // We need a helper point along the bisector direction from M
+  // The bisector direction is perpendicular to AB, so (-dy, dx)
+  // We'll create an invisible helper point that we reposition each frame
+  const helperBis = scene.point(0, 10, { visible: false });
+  rightAngle = scene.rightAngleMarker(bisM, A, helperBis, { color: COLORS.GREEN, size: 12 });
+  // We'll update helperBis in draw
+
+  // Sample point P on bisector
+  P = scene.point(0, 0, { visible: false, label: 'P', color: COLORS.YELLOW, radius: 5 });
+  segPA = scene.segment(P, A, { color: 'rgba(255,209,102,0.4)', lineWidth: 1, dash: [3, 3] });
+  segPB = scene.segment(P, B, { color: 'rgba(255,209,102,0.4)', lineWidth: 1, dash: [3, 3] });
+  distPA = scene.distance(P, A);
+  distPB = scene.distance(P, B);
+
+  // Store helper for updating
+  scene._helperBis = helperBis;
+
+  hideAll();
+}
+
+// ── Visibility helpers ──────────────────────────────────────────
+
+function hideAll() {
+  scene.objects.forEach(o => { o.opts.visible = false; });
+}
+
+function setVisible(objs, v) {
+  objs.forEach(o => { if (o) o.opts.visible = v; });
+}
+
+function applyStageVisibility(idx) {
+  hideAll();
+  // Points always visible (and draggable)
+  setVisible([A, B], true);
+
+  if (idx === 0) {
+    setVisible([segAB, distAB], true);
+  } else if (idx === 1) {
+    setVisible([segAB, M], true);
+    // Re-use segAB as a dim connector
+    segAB.opts.color = 'rgba(255,255,255,0.4)';
+    segAB.opts.lineWidth = 2;
+    segAB.opts.glow = false;
+  } else if (idx === 2) {
+    setVisible([lineAB], true);
+  } else if (idx === 3) {
+    setVisible([segBis, bisector, bisM, rightAngle, P, segPA, segPB, distPA, distPB], true);
+    scene._helperBis.opts.visible = false; // keep helper invisible
+  }
+}
+
+// ── Update helper point for right-angle marker ──────────────────
+
+function updateBisectorHelper() {
+  const dx = B.wx - A.wx, dy = B.wy - A.wy;
+  const mx = (A.wx + B.wx) / 2, my = (A.wy + B.wy) / 2;
+  // Perpendicular direction: (-dy, dx)
+  scene._helperBis.wx = mx - dy;
+  scene._helperBis.wy = my + dx;
+
+  // Update sample point P: 1.5 world-units along bisector from midpoint
+  const plen = Math.hypot(dy, dx) || 1;
+  P.wx = mx + (-dy / plen) * 1.5;
+  P.wy = my + (dx / plen) * 1.5;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// VizCore.init
+// ══════════════════════════════════════════════════════════════════
+
+const result = VizCore.init({
+  title: T('Geometria analityczna', 'Analytic Geometry'),
+  H,
+  stages: [
+    // ── Stage 0: Distance formula ─────────────────────────────
+    {
+      title: () => T('Odleglosc miedzy punktami', 'Distance between points'),
+      desc: () => T(
+        'd = \u221a((x\u2082\u2212x\u2081)\u00b2+(y\u2082\u2212y\u2081)\u00b2). To jest twierdzenie Pitagorasa na ukladzie wspolrzednych. Przeciagnij punkty!',
+        'd = \u221a((x\u2082\u2212x\u2081)\u00b2+(y\u2082\u2212y\u2081)\u00b2). This is the Pythagorean theorem on a coordinate system. Drag the points!'
+      ),
+      sliders: [],
+      draw(cx, W, H) {
+        scene.clear();
+        scene.drawGrid();
+        scene.drawAxes();
+        scene.update();
+
+        const ax = A.wx, ay = A.wy, bx = B.wx, by = B.wy;
+        const dx = bx - ax, dy = by - ay;
+
+        // Right-angle triangle legs (dashed)
+        const sA = scene.toScreen(ax, ay);
+        const sCorner = scene.toScreen(bx, ay); // projection corner
+        const sB = scene.toScreen(bx, by);
+
+        cx.beginPath();
+        cx.moveTo(sA.x, sA.y);
+        cx.lineTo(sCorner.x, sCorner.y);
+        cx.lineTo(sB.x, sB.y);
+        cx.strokeStyle = 'rgba(255,255,255,0.2)';
+        cx.lineWidth = 1;
+        cx.setLineDash([3, 3]);
+        cx.stroke();
+        cx.setLineDash([]);
+
+        // Right-angle box at corner
+        const sq = 8;
+        const signX = dx > 0 ? -1 : 1;
+        const signY = dy > 0 ? -1 : 1;
+        cx.beginPath();
+        cx.moveTo(sCorner.x + signX * sq, sCorner.y);
+        cx.lineTo(sCorner.x + signX * sq, sCorner.y + signY * sq);
+        cx.lineTo(sCorner.x, sCorner.y + signY * sq);
+        cx.strokeStyle = COLORS.GREEN;
+        cx.lineWidth = 1.2;
+        cx.stroke();
+
+        // Render engine objects (segment, points)
+        for (const obj of scene.objects) if (obj.opts.visible) obj.render(cx);
+
+        // Leg labels
+        cx.font = '11px monospace';
+        cx.textAlign = 'center';
+        cx.fillStyle = COLORS.ORANGE;
+        cx.fillText('|\u0394x| = ' + Math.abs(dx).toFixed(1), (sA.x + sCorner.x) / 2, sCorner.y + 16);
+        cx.fillStyle = COLORS.YELLOW;
+        cx.fillText('|\u0394y| = ' + Math.abs(dy).toFixed(1), sCorner.x + 28, (sCorner.y + sB.y) / 2);
+
+        // Formula display
+        const d = distAB.value;
+        cx.font = '13px monospace';
+        cx.textAlign = 'left';
+        cx.fillStyle = COLORS.CYAN;
+        cx.fillText('d = \u221a(' + Math.abs(dx).toFixed(1) + '\u00b2 + ' + Math.abs(dy).toFixed(1) + '\u00b2) = ' + d.toFixed(2), 12, 22);
+        cx.fillStyle = 'rgba(255,255,255,0.35)';
+        cx.fillText(T('Przeciagnij punkty!', 'Drag the points!'), 12, 40);
+      },
+    },
+
+    // ── Stage 1: Midpoint ─────────────────────────────────────
+    {
+      title: () => T('Srodek odcinka', 'Midpoint of a segment'),
+      desc: () => T(
+        'Srodek odcinka AB = ((x\u2081+x\u2082)/2, (y\u2081+y\u2082)/2). To jest po prostu srednia wspolrzednych.',
+        'Midpoint of AB = ((x\u2081+x\u2082)/2, (y\u2081+y\u2082)/2). It\'s simply the average of the coordinates.'
+      ),
+      sliders: [],
+      draw(cx, W, H) {
+        scene.clear();
+        scene.drawGrid();
+        scene.drawAxes();
+        scene.update();
+
+        const mx = M.wx, my = M.wy;
+
+        // Projection lines from M to axes (dashed)
+        const sM = scene.toScreen(mx, my);
+        const sMx = scene.toScreen(mx, 0); // on x-axis
+        const sMy = scene.toScreen(0, my); // on y-axis
+
+        cx.beginPath();
+        cx.moveTo(sMx.x, sMx.y);
+        cx.lineTo(sM.x, sM.y);
+        cx.moveTo(sMy.x, sMy.y);
+        cx.lineTo(sM.x, sM.y);
+        cx.strokeStyle = 'rgba(255,209,102,0.4)';
+        cx.lineWidth = 1;
+        cx.setLineDash([3, 3]);
+        cx.stroke();
+        cx.setLineDash([]);
+
+        // Render engine objects
+        for (const obj of scene.objects) if (obj.opts.visible) obj.render(cx);
+
+        // Formula display
+        const ax = A.wx, ay = A.wy, bx = B.wx, by = B.wy;
+        cx.font = '13px monospace';
+        cx.textAlign = 'left';
+        cx.fillStyle = COLORS.YELLOW;
+        cx.fillText('M = ((' + ax.toFixed(1) + '+' + bx.toFixed(1) + ')/2, (' + ay.toFixed(1) + '+' + by.toFixed(1) + ')/2)', 12, 22);
+        cx.fillText('  = (' + mx.toFixed(1) + ', ' + my.toFixed(1) + ')', 12, 40);
+      },
+    },
+
+    // ── Stage 2: Line through two points ──────────────────────
+    {
+      title: () => T('Prosta przez dwa punkty', 'Line through two points'),
+      desc: () => T(
+        'Prosta przez A(x\u2081,y\u2081) i B(x\u2082,y\u2082): nachylenie m = (y\u2082\u2212y\u2081)/(x\u2082\u2212x\u2081), rownanie y = mx + b.',
+        'Line through A(x\u2081,y\u2081) and B(x\u2082,y\u2082): slope m = (y\u2082\u2212y\u2081)/(x\u2082\u2212x\u2081), equation y = mx + b.'
+      ),
+      sliders: [],
+      draw(cx, W, H) {
+        scene.clear();
+        scene.drawGrid();
+        scene.drawAxes();
+        scene.update();
+
+        // Render engine objects (line, points)
+        for (const obj of scene.objects) if (obj.opts.visible) obj.render(cx);
+
+        // Equation display
+        const dx = B.wx - A.wx, dy = B.wy - A.wy;
+        cx.font = '13px monospace';
+        cx.textAlign = 'left';
+
+        if (Math.abs(dx) < 0.01) {
+          cx.fillStyle = COLORS.CYAN;
+          cx.fillText('x = ' + A.wx.toFixed(1) + ' (prosta pionowa)', 12, 22);
+        } else {
+          const m = dy / dx;
+          const b = A.wy - m * A.wx;
+          cx.fillStyle = COLORS.CYAN;
+          cx.fillText('m = ' + m.toFixed(2), 12, 22);
+          cx.fillText('y = ' + m.toFixed(2) + 'x + (' + b.toFixed(2) + ')', 12, 40);
+        }
+
+        cx.fillStyle = 'rgba(255,255,255,0.35)';
+        cx.font = '11px monospace';
+        cx.fillText(T('Przeciagnij punkty!', 'Drag the points!'), 12, 58);
+      },
+    },
+
+    // ── Stage 3: Perpendicular bisector ───────────────────────
+    {
+      title: () => T('Miejsce geometryczne punktow', 'Locus of points'),
+      desc: () => T(
+        'Zbior punktow jednakowo odleglych od A i B to prostopadla dwusieczna odcinka AB. To jest podstawa budowania okregow i innych krzywych.',
+        'The set of points equidistant from A and B is the perpendicular bisector of AB. This is the basis of circles and other curves.'
+      ),
+      sliders: [],
+      draw(cx, W, H) {
+        updateBisectorHelper();
+
+        scene.clear();
+        scene.drawGrid();
+        scene.drawAxes();
+        scene.update();
+
+        // Render all visible engine objects
+        for (const obj of scene.objects) if (obj.opts.visible) obj.render(cx);
+
+        // Text overlays
+        cx.font = '12px monospace';
+        cx.textAlign = 'left';
+        cx.fillStyle = COLORS.GREEN;
+        cx.fillText(T('Prostopadla dwusieczna AB', 'Perpendicular bisector of AB'), 12, 22);
+        cx.fillStyle = COLORS.YELLOW;
+        const dPA = distPA.value, dPB = distPB.value;
+        cx.fillText('PA = ' + dPA.toFixed(2) + '  PB = ' + dPB.toFixed(2) + '  \u2190 ' + T('rowne', 'equal'), 12, 40);
+      },
+    },
+  ],
+});
+
+const { cv, cx: vizCx, goTo, getCanvasPos } = result;
+
+// ── Initialize scene ────────────────────────────────────────────
+setup(vizCx);
+
+// ── Drag handling via engine ────────────────────────────────────
+cv.classList.add('draggable');
+
+scene.bindDrag(cv, (e) => {
+  const rect = cv.getBoundingClientRect();
+  const scX = W / rect.width;
+  const scY = H / rect.height;
+  const src = e.touches ? e.touches[0] : e;
+  return {
+    x: (src.clientX - rect.left) * scX,
+    y: (src.clientY - rect.top) * scY,
+  };
+});
+
+// ── Track stage changes via title mutation ──────────────────────
+const stageTitle = document.getElementById('qf');
+const observer = new MutationObserver(() => {
+  const title = stageTitle.textContent;
+  let newStage = -1;
+  if (title.includes('Odleglosc') || title.includes('Distance')) newStage = 0;
+  else if (title.includes('Srodek') || title.includes('Midpoint')) newStage = 1;
+  else if (title.includes('Prosta') || title.includes('Line')) newStage = 2;
+  else if (title.includes('Miejsce') || title.includes('Locus')) newStage = 3;
+
+  if (newStage !== -1 && newStage !== currentStage) {
+    currentStage = newStage;
+
+    // Restore segment style when leaving stage 1
+    segAB.opts.color = COLORS.CYAN;
+    segAB.opts.lineWidth = 2.5;
+    segAB.opts.glow = true;
+
+    applyStageVisibility(newStage);
+  }
+});
+observer.observe(stageTitle, { childList: true, characterData: true, subtree: true });
+
+// ── Initialize first stage ──────────────────────────────────────
+applyStageVisibility(0);
+</script>
+</body>
+</html>

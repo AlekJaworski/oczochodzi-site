@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<title>Równanie kwadratowe — Wyłap błąd</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e0e12; font-family: monospace; display: flex; justify-content: center; padding: 2rem 1rem; min-height: 100vh; color: rgba(255,255,255,.85); }
+  .wrap { width: 100%; max-width: 640px; }
+  canvas { width: 100%; display: block; border-radius: 10px 10px 0 0; }
+  .panel { background: #16161a; border: 0.5px solid rgba(255,255,255,.1); border-top: 0.5px solid rgba(255,255,255,.07); border-radius: 0 0 10px 10px; padding: .875rem 1.25rem; }
+
+  .head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+  .head .step { font-size: 11px; color: rgba(255,255,255,.4); letter-spacing: .04em; }
+  .head .title { font-size: 16px; font-weight: 500; color: #58C4DD; letter-spacing: .02em; }
+  .desc { font-size: 13px; line-height: 1.65; color: rgba(255,255,255,.62); margin-bottom: 10px; min-height: 34px; }
+
+  .pips { display: flex; gap: 14px; flex-wrap: wrap; margin: 4px 0 10px; font-size: 12px; }
+  .pip { display: inline-flex; align-items: center; gap: 6px; color: rgba(255,255,255,.55); }
+  .pip .mark { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(255,255,255,.25); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; line-height: 1; }
+  .pip.ok { color: #83C167; }
+  .pip.ok .mark { background: #83C167; border-color: #83C167; color: #0e0e12; }
+  .pip.ok .mark::before { content: "\2713"; }
+
+  .predict { margin-bottom: 10px; }
+  .predict .q { font-size: 13px; color: rgba(255,255,255,.82); margin-bottom: 8px; line-height: 1.55; }
+  .predict .opts { display: flex; flex-direction: column; gap: 6px; }
+  .predict button { background: transparent; border: 0.5px solid rgba(255,255,255,.25); color: rgba(255,255,255,.78); padding: 8px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; font-family: monospace; text-align: left; transition: background .15s, border-color .15s; }
+  .predict button:hover { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.4); }
+  .predict button.picked { border-color: #58C4DD; color: #58C4DD; }
+  .predict .feedback { margin-top: 8px; font-size: 12px; line-height: 1.55; color: rgba(255,255,255,.7); padding: 8px 10px; border-left: 2px solid #58C4DD; background: rgba(88,196,221,.06); border-radius: 0 4px 4px 0; }
+
+  /* Debug widget */
+  .debug { margin-bottom: 10px; }
+  .debug-task { font-size: 13px; color: rgba(255,255,255,.82); margin-bottom: 10px; line-height: 1.55; padding: 8px 10px; border-left: 2px solid #58C4DD; background: rgba(88,196,221,.06); border-radius: 0 4px 4px 0; }
+  .debug-steps { display: flex; flex-direction: column; gap: 4px; }
+  .debug-step { display: flex; align-items: flex-start; gap: 10px; background: transparent; border: 0.5px solid rgba(255,255,255,.15); color: rgba(255,255,255,.8); padding: 8px 12px; font-size: 13px; line-height: 1.5; border-radius: 6px; cursor: pointer; font-family: monospace; text-align: left; transition: background .15s, border-color .15s; }
+  .debug-step:hover:not(:disabled) { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.45); }
+  .debug-step:disabled { cursor: default; opacity: .85; }
+  .debug-step .debug-n { color: rgba(255,255,255,.4); min-width: 20px; }
+  .debug-step .debug-text { flex: 1; }
+  .debug-step.wrong { border-color: #FF6B6B; background: rgba(255,107,107,.08); color: #FF6B6B; }
+  .debug-step.correct { border-color: #83C167; background: rgba(131,193,103,.1); color: #83C167; }
+  .debug-feedback { margin-top: 10px; font-size: 12px; line-height: 1.55; padding: 8px 10px; border-radius: 0 4px 4px 0; }
+  .debug-feedback.ok { color: rgba(255,255,255,.82); border-left: 2px solid #83C167; background: rgba(131,193,103,.06); }
+  .debug-feedback.bad { color: rgba(255,255,255,.78); border-left: 2px solid #FF6B6B; background: rgba(255,107,107,.06); }
+
+  .hints { font-size: 12px; color: rgba(255,255,255,.5); margin: 4px 0 10px; line-height: 1.55; }
+  .hints .hint { padding: 6px 10px; border-left: 2px solid #FFD166; background: rgba(255,209,102,.05); margin-top: 4px; border-radius: 0 4px 4px 0; }
+
+  .nav { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+  .nav button { background: transparent; border: 0.5px solid rgba(255,255,255,.25); color: rgba(255,255,255,.7); padding: 5px 14px; font-size: 13px; border-radius: 6px; cursor: pointer; font-family: monospace; transition: background .15s; }
+  .nav button:hover:not(:disabled) { background: rgba(255,255,255,.08); }
+  .nav button:disabled { opacity: .3; cursor: default; }
+  .nav button.primary { border-color: #83C167; color: #83C167; }
+  .nav button.primary:hover { background: rgba(131,193,103,.1); }
+
+  .dots { display: flex; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; cursor: pointer; background: rgba(255,255,255,.15); transition: background .2s; }
+  .dot.active { background: #58C4DD; }
+  .dot.done { background: #83C167; }
+
+  .solved-note { font-size: 13px; color: #83C167; line-height: 1.55; padding: 8px 10px; border-left: 2px solid #83C167; background: rgba(131,193,103,.06); border-radius: 0 4px 4px 0; margin-bottom: 8px; }
+  .wrapup-note { font-size: 13px; color: #C78DFF; line-height: 1.55; padding: 10px 12px; border-left: 2px solid #C78DFF; background: rgba(199,141,255,.06); border-radius: 0 4px 4px 0; margin-bottom: 8px; }
+
+  .banner { background: #16161a; border: 0.5px solid rgba(255,255,255,.1); border-bottom: 0; border-radius: 10px 10px 0 0; padding: 14px 18px; color: rgba(255,255,255,.72); font-size: 13px; line-height: 1.6; }
+  .banner b { color: #58C4DD; font-weight: 500; }
+  html[lang="pl"] .banner-en, html[lang="en"] .banner-pl { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="banner banner-pl">
+    <b>Warsztat: wyłap błąd.</b> Każde wyzwanie pokazuje cudze (błędne) rozwiązanie równania kwadratowego. Twoje zadanie: kliknij ten krok, w którym pojawia się błąd.
+  </div>
+  <div class="banner banner-en">
+    <b>Workshop: spot the mistake.</b> Each challenge shows someone else’s (flawed) solution to a quadratic equation. Your task: click the step where the mistake appears.
+  </div>
+  <div class="panel">
+    <div class="head">
+      <span class="step" id="step"></span>
+      <div class="dots" id="dots"></div>
+    </div>
+    <p class="title" id="title"></p>
+    <p class="desc" id="desc"></p>
+    <div id="predict"></div>
+    <div id="sliders-wrap"></div>
+    <div id="choices-wrap"></div>
+    <div id="debug-wrap"></div>
+    <div class="pips" id="pips"></div>
+    <div class="hints" id="hints"></div>
+    <div id="solved-msg"></div>
+    <div class="nav">
+      <button id="prev">&larr;</button>
+      <button id="next" class="primary">Dalej &rarr;</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initWarsztat, T } from '../lib/warsztat-core.js';
+{
+  // Sync the <html lang="..."> attribute with the URL ?lang= param so the
+  // banner CSS can show the right copy on first paint.
+  const urlLang = new URLSearchParams(window.location.search).get('lang') || 'pl';
+  document.documentElement.lang = urlLang === 'en' ? 'en' : 'pl';
+
+  // No canvas for this warsztat — debug-type challenges are purely textual.
+  // We still need a hidden canvas because initWarsztat expects one.
+  const cv = document.createElement('canvas');
+  cv.id = 'cv';
+  cv.width = 1; cv.height = 1;
+  cv.style.display = 'none';
+  document.body.appendChild(cv);
+
+  const noop = () => {};
+
+  const challenges = [
+    // ─── Ch.1: Vieta sign error ─────────────────────────────────
+    {
+      id: 'ch1',
+      title:   'Wyłap błąd — znak w Vieta',
+      titleEn: 'Spot the mistake — Vieta sign',
+      desc:    'Sprawdź rozumowanie Jana krok po kroku. Który krok nie jest prawdą?',
+      descEn:  'Walk through Jan’s reasoning step by step. Which step is not true?',
+      init: noop,
+      debug: {
+        task:   'Jan rozwiązał <b>x² + 5x + 6 = 0</b> i dostał pierwiastki 2 i 3. Gdzie popełnił błąd?',
+        taskEn: 'Jan solved <b>x² + 5x + 6 = 0</b> and got the roots 2 and 3. Where is his mistake?',
+        steps: [
+          { n: 1,
+            text:   'x² + 5x + 6 = 0   (czyli a = 1, b = 5, c = 6)',
+            textEn: 'x² + 5x + 6 = 0   (so a = 1, b = 5, c = 6)' },
+          { n: 2,
+            text:   'Wzory Viète’a: szukamy dwóch liczb o sumie = 5 i iloczynie = 6.',
+            textEn: 'Vieta’s formulas: we’re looking for two numbers with sum = 5 and product = 6.' },
+          { n: 3,
+            text:   'Pary o iloczynie 6: (1, 6) → suma 7; (2, 3) → suma 5. ✓',
+            textEn: 'Pairs with product 6: (1, 6) → sum 7; (2, 3) → sum 5. ✓' },
+          { n: 4,
+            text:   'Więc pierwiastki to 2 i 3.',
+            textEn: 'So the roots are 2 and 3.' },
+        ],
+        errorLine: 2,
+        wrongChoice: {
+          general: 'Ten krok jest rachunkowo zgodny z poprzednim — ale błąd leży wyżej. Wróć i sprawdź założenia.',
+          1: 'Współczynniki wypisane poprawnie: a=1, b=5, c=6. Szukaj dalej.',
+          3: 'Rachunek (2+3=5, 2·3=6) jest poprawny — ale zgadza się z <i>błędnym</i> założeniem z kroku 2. Cofnij się.',
+          4: 'Krok 4 tylko powtarza wynik z kroku 3. Przyczyna błędu jest wcześniej.',
+        },
+        wrongChoiceEn: {
+          general: 'This step is arithmetically consistent with the previous one — but the error is upstream. Go back and check the assumptions.',
+          1: 'The coefficients are written correctly: a=1, b=5, c=6. Keep looking.',
+          3: 'The arithmetic (2+3=5, 2·3=6) is correct — but it agrees with the <i>wrong</i> assumption from step 2. Step back.',
+          4: 'Step 4 just restates the result of step 3. The cause of the error is earlier.',
+        },
+        correctExplanation:   'Krok 2 zawiera błąd znaku. Wzory Viète’a mówią: <b>x₁ + x₂ = −b/a</b> (z minusem!), nie b/a. Dla b = 5 więc suma = −5. Prawidłowo: szukamy dwóch liczb o sumie −5 i iloczynie 6 → to −2 i −3. Pierwiastki równania to −2 i −3 (sprawdź: (−2)² + 5·(−2) + 6 = 4 − 10 + 6 = 0 ✓).',
+        correctExplanationEn: 'Step 2 has a sign error. Vieta’s formulas say: <b>x₁ + x₂ = −b/a</b> (with a minus!), not b/a. With b = 5, the sum should be −5. Correctly: we want two numbers with sum −5 and product 6 → those are −2 and −3. The roots are −2 and −3 (check: (−2)² + 5·(−2) + 6 = 4 − 10 + 6 = 0 ✓).',
+      },
+      pips: () => [],
+      solved: () => false,
+      hints: [
+        'Zapisz wzór Viète’a dokładnie: jaki znak ma suma pierwiastków?',
+        'Dla ax² + bx + c = 0: x₁ + x₂ = −b/a. Minus z przodu.',
+        'Przy b = 5 suma to −5, nie +5. W którym kroku Jan zgubił minus?',
+      ],
+      hintsEn: [
+        'Write down Vieta’s formula exactly: what sign does the sum of roots carry?',
+        'For ax² + bx + c = 0: x₁ + x₂ = −b/a. A minus out front.',
+        'With b = 5 the sum is −5, not +5. In which step did Jan drop the minus?',
+      ],
+      solvedMsg:   'Dobrze wyłapane. Znak w Viète’a to klasyczna pułapka maturalna — suma = −b/a, iloczyn = c/a.',
+      solvedMsgEn: 'Nicely caught. The sign in Vieta’s formula is a classic exam trap — sum = −b/a, product = c/a.',
+      draw: noop,
+    },
+
+    // ─── Ch.2: Delta sign error ─────────────────────────────────
+    {
+      id: 'ch2',
+      title:   'Wyłap błąd — znak w delcie',
+      titleEn: 'Spot the mistake — sign in the discriminant',
+      desc:    'Ola policzyła deltę i wyszło jej, że nie ma pierwiastków. Sprawdź, gdzie się pomyliła.',
+      descEn:  'Ola computed the discriminant and concluded there are no real roots. Find where she slipped.',
+      init: noop,
+      debug: {
+        task:   'Ola obliczyła Δ dla <b>2x² − 3x − 5 = 0</b> i dostała Δ = −31. Co zrobiła źle?',
+        taskEn: 'Ola computed Δ for <b>2x² − 3x − 5 = 0</b> and got Δ = −31. What did she get wrong?',
+        steps: [
+          { n: 1,
+            text:   'a = 2,  b = −3,  c = −5',
+            textEn: 'a = 2,  b = −3,  c = −5' },
+          { n: 2,
+            text:   'Δ = b² − 4ac = (−3)² − 4·2·(−5)',
+            textEn: 'Δ = b² − 4ac = (−3)² − 4·2·(−5)' },
+          { n: 3,
+            text:   'Δ = 9 − 40 = −31',
+            textEn: 'Δ = 9 − 40 = −31' },
+          { n: 4,
+            text:   'Zatem Δ < 0 → równanie nie ma pierwiastków rzeczywistych.',
+            textEn: 'Therefore Δ < 0 → the equation has no real roots.' },
+        ],
+        errorLine: 3,
+        wrongChoice: {
+          general: 'Ten krok jest poprawny — szukaj wśród pozostałych.',
+          1: 'Współczynniki przepisane poprawnie: a=2, b=−3, c=−5.',
+          2: 'Wzór Δ = b² − 4ac i podstawienie wartości też jest OK. Błąd dopiero przy upraszczaniu.',
+          4: 'Wniosek z delty jest logicznie poprawny <i>jeśli</i> sama delta byłaby ujemna. Sprawdź, czy aby na pewno jest.',
+        },
+        wrongChoiceEn: {
+          general: 'This step is correct — look among the others.',
+          1: 'The coefficients are copied correctly: a=2, b=−3, c=−5.',
+          2: 'The formula Δ = b² − 4ac and the substitution are also OK. The slip is in the simplification.',
+          4: 'The conclusion from a negative Δ would be logically correct <i>if</i> Δ were actually negative. Check whether it really is.',
+        },
+        correctExplanation:   'Krok 3 uproszczony źle. W kroku 2 stoi <b>− 4·2·(−5)</b>. Minus razy minus daje plus: −4·2·(−5) = <b>+40</b>. Więc Δ = 9 + 40 = <b>49</b>, czyli Δ > 0 — równanie ma dwa pierwiastki rzeczywiste (√49 = 7, więc x = (3±7)/4 → x₁ = 2.5, x₂ = −1).',
+        correctExplanationEn: 'Step 3 is simplified incorrectly. Step 2 has <b>− 4·2·(−5)</b>. Minus times minus is plus: −4·2·(−5) = <b>+40</b>. So Δ = 9 + 40 = <b>49</b>, i.e. Δ > 0 — the equation has two real roots (√49 = 7, so x = (3±7)/4 → x₁ = 2.5, x₂ = −1).',
+      },
+      pips: () => [],
+      solved: () => false,
+      hints: [
+        'Pomnóż powoli: −4 · 2 · (−5). Ile minusów?',
+        'Dwa minusy: jeden przed 4, jeden w c = −5. Minus razy minus = plus.',
+        'Więc −4·2·(−5) = +40, nie −40. W którym kroku to poszło nie tak?',
+      ],
+      hintsEn: [
+        'Multiply slowly: −4 · 2 · (−5). How many minus signs?',
+        'Two minuses: one in front of 4, one in c = −5. Minus times minus = plus.',
+        'So −4·2·(−5) = +40, not −40. In which step did that go wrong?',
+      ],
+      solvedMsg:   'Tak. Przy podstawianiu ujemnych współczynników pilnuj znaków — nawias (−5) trzyma minus, który łączy się z minusem z przodu −4.',
+      solvedMsgEn: 'Right. When substituting negative coefficients, watch the signs — the parenthesis (−5) carries a minus that combines with the leading minus in −4.',
+      draw: noop,
+    },
+
+    // ─── Ch.3: Forgot 2a in quadratic formula ───────────────────
+    {
+      id: 'ch3',
+      title:   'Wyłap błąd — mianownik wzoru kwadratowego',
+      titleEn: 'Spot the mistake — denominator of the quadratic formula',
+      desc:    'Kuba użył wzoru na pierwiastki, ale coś mu nie gra. Który krok jest podejrzany?',
+      descEn:  'Kuba used the quadratic formula, but something’s off. Which step is suspicious?',
+      init: noop,
+      debug: {
+        task:   'Kuba rozwiązał <b>2x² + 3x − 2 = 0</b> wzorem x = (−b ± √Δ) / a i wyszło mu x₁ = 1, x₂ = −4. Gdzie błąd?',
+        taskEn: 'Kuba solved <b>2x² + 3x − 2 = 0</b> with the formula x = (−b ± √Δ) / a and got x₁ = 1, x₂ = −4. Where’s the error?',
+        steps: [
+          { n: 1,
+            text:   'a = 2, b = 3, c = −2.  Δ = 9 − 4·2·(−2) = 9 + 16 = 25,  √Δ = 5.',
+            textEn: 'a = 2, b = 3, c = −2.  Δ = 9 − 4·2·(−2) = 9 + 16 = 25,  √Δ = 5.' },
+          { n: 2,
+            text:   'x = (−b ± √Δ) / a = (−3 ± 5) / 2',
+            textEn: 'x = (−b ± √Δ) / a = (−3 ± 5) / 2' },
+          { n: 3,
+            text:   'x₁ = (−3 + 5) / 2 = 1;   x₂ = (−3 − 5) / 2 = −4.',
+            textEn: 'x₁ = (−3 + 5) / 2 = 1;   x₂ = (−3 − 5) / 2 = −4.' },
+          { n: 4,
+            text:   'Zatem pierwiastki to 1 i −4.',
+            textEn: 'So the roots are 1 and −4.' },
+        ],
+        errorLine: 2,
+        wrongChoice: {
+          general: 'Wszystko poza jednym krokiem się zgadza — szukaj dalej.',
+          1: 'Delta policzona poprawnie: Δ = 25, √Δ = 5.',
+          3: 'Same rachunki (−3+5)/2 = 1 i (−3−5)/2 = −4 są poprawne — ale wychodzą z błędnej formuły powyżej.',
+          4: 'To tylko przepisanie wyników z kroku 3. Błąd jest wcześniej.',
+        },
+        wrongChoiceEn: {
+          general: 'Everything except one step checks out — keep looking.',
+          1: 'The discriminant is computed correctly: Δ = 25, √Δ = 5.',
+          3: 'The arithmetic (−3+5)/2 = 1 and (−3−5)/2 = −4 is fine — but it’s coming out of the wrong formula above.',
+          4: 'This just restates the results of step 3. The error is earlier.',
+        },
+        correctExplanation:   'Krok 2 ma zły wzór. Prawdziwy wzór kwadratowy to <b>x = (−b ± √Δ) / (2a)</b>, nie /a. Kuba zapomniał o dwójce w mianowniku. Poprawnie: x = (−3 ± 5) / (2·2) = (−3 ± 5) / 4 → x₁ = 0.5, x₂ = −2. (Sprawdź: 2·(0.5)² + 3·0.5 − 2 = 0.5 + 1.5 − 2 = 0 ✓.)',
+        correctExplanationEn: 'Step 2 has the wrong formula. The actual quadratic formula is <b>x = (−b ± √Δ) / (2a)</b>, not /a. Kuba forgot the 2 in the denominator. Correctly: x = (−3 ± 5) / (2·2) = (−3 ± 5) / 4 → x₁ = 0.5, x₂ = −2. (Check: 2·(0.5)² + 3·0.5 − 2 = 0.5 + 1.5 − 2 = 0 ✓.)',
+      },
+      pips: () => [],
+      solved: () => false,
+      hints: [
+        'Przypomnij sobie dokładnie wzór na pierwiastki. Co stoi w mianowniku?',
+        'W mianowniku jest <b>2a</b>, nie samo a. Dla a = 2 mianownik to 4.',
+        'W którym kroku Kuba napisał /a zamiast /(2a)?',
+      ],
+      hintsEn: [
+        'Recall the quadratic formula exactly. What’s in the denominator?',
+        'The denominator is <b>2a</b>, not just a. For a = 2 the denominator is 4.',
+        'In which step did Kuba write /a instead of /(2a)?',
+      ],
+      solvedMsg:   'Tak. Częsta pułapka przy a ≠ 1: jeśli zapomnisz o 2a, dla a = 2 wyniki wyjdą dokładnie dwa razy za duże co do wartości bezwzględnej.',
+      solvedMsgEn: 'Right. A common pitfall when a ≠ 1: drop the 2a and, for a = 2, your roots come out exactly twice as large in magnitude.',
+      draw: noop,
+    },
+
+    // ─── Ch.4: Dropped a solution in factoring ──────────────────
+    {
+      id: 'ch4',
+      title:   'Wyłap błąd — zgubione rozwiązanie',
+      titleEn: 'Spot the mistake — a lost solution',
+      desc:    'Marta dostała równanie w postaci iloczynowej i zatrzymała się za wcześnie. W którym miejscu?',
+      descEn:  'Marta got the equation in factored form and stopped too early. Where?',
+      init: noop,
+      debug: {
+        task:   'Marta rozwiązała <b>(x−2)(x+3) = 0</b>. Napisała: "x = 2". Czy to wystarczy?',
+        taskEn: 'Marta solved <b>(x−2)(x+3) = 0</b>. She wrote: "x = 2". Is that enough?',
+        steps: [
+          { n: 1, text: '(x − 2)(x + 3) = 0',                                         textEn: '(x − 2)(x + 3) = 0' },
+          { n: 2, text: 'Iloczyn jest zerem wtedy i tylko wtedy, gdy przynajmniej jeden z czynników jest zerem.',
+                  textEn: 'A product is zero if and only if at least one of the factors is zero.' },
+          { n: 3, text: 'x − 2 = 0, więc x = 2.',                                      textEn: 'x − 2 = 0, so x = 2.' },
+          { n: 4, text: 'Odpowiedź: x = 2.',                                            textEn: 'Answer: x = 2.' },
+        ],
+        errorLine: 4,
+        wrongChoice: {
+          general: 'Ten krok sam w sobie jest poprawny. Pomyśl o całości rozumowania.',
+          1: 'Przepisane równanie bez zmian — wszystko OK.',
+          2: 'To prawdziwa własność iloczynu (tzw. zero-product property). Nie tu błąd.',
+          3: 'Rzeczywiście z x − 2 = 0 wynika x = 2. Ale czy to <i>wszystko</i>, co wynika z kroku 2?',
+        },
+        wrongChoiceEn: {
+          general: 'This step is fine on its own. Think about the reasoning as a whole.',
+          1: 'The equation is copied unchanged — all good.',
+          2: 'That’s the genuine zero-product property. Not the bug.',
+          3: 'It’s true that x − 2 = 0 gives x = 2. But is that <i>everything</i> step 2 implies?',
+        },
+        correctExplanation:   'Krok 4 jest niepełny — Marta zgubiła drugi przypadek. Krok 2 mówi: <i>przynajmniej jeden</i> czynnik jest zerem, a Marta rozpatrzyła tylko x−2=0. Drugi czynnik też może być zerem: <b>x + 3 = 0 → x = −3</b>. Pełny zbiór rozwiązań: <b>x ∈ {2, −3}</b>.',
+        correctExplanationEn: 'Step 4 is incomplete — Marta dropped the second case. Step 2 says <i>at least one</i> factor is zero, but she only looked at x−2=0. The other factor can also be zero: <b>x + 3 = 0 → x = −3</b>. The full solution set: <b>x ∈ {2, −3}</b>.',
+      },
+      pips: () => [],
+      solved: () => false,
+      hints: [
+        'Iloczyn dwóch czynników jest zerem, gdy jeden <i>lub</i> drugi jest zerem — oba przypadki trzeba rozpatrzeć.',
+        'Marta rozpatrzyła x − 2 = 0. A drugi czynnik, x + 3?',
+        'Z x + 3 = 0 wychodzi x = −3. To drugie rozwiązanie — w którym kroku Marta je pominęła?',
+      ],
+      hintsEn: [
+        'A product of two factors is zero when one <i>or</i> the other is zero — both cases need to be considered.',
+        'Marta took x − 2 = 0. What about the other factor, x + 3?',
+        'x + 3 = 0 gives x = −3. That’s the second root — in which step did Marta drop it?',
+      ],
+      solvedMsg:   'Dokładnie. Przy postaci iloczynowej zawsze rozpatrujemy każdy czynnik z osobna — równanie może mieć więcej niż jedno rozwiązanie.',
+      solvedMsgEn: 'Exactly. With factored form always handle each factor separately — the equation can have more than one root.',
+      draw: noop,
+    },
+  ];
+
+  initWarsztat({
+    canvasId: 'cv',
+    challenges,
+    lsKey: 'warsztat:quadratic-debug:completed',
+    wrapup:   'Cztery klasyczne błędy: <b>znak w Viète’a</b> (suma = −b/a), <b>znak w delcie</b> (−4ac z ujemnym c daje plus), <b>2a w mianowniku</b> wzoru kwadratowego, <b>zgubiony pierwiastek</b> w postaci iloczynowej. Przed oddaniem pracy: sprawdź podstawieniem.',
+    wrapupEn: 'Four classic slips: <b>sign in Vieta’s formula</b> (sum = −b/a), <b>sign in the discriminant</b> (−4ac with negative c gives plus), <b>2a in the denominator</b> of the quadratic formula, <b>a lost root</b> in factored form. Before turning the work in: check by substitution.',
+  });
+}
+</script>
+</body>
+</html>

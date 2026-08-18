@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Okrąg wpisany — eksplorator</title>
+</head>
+<body>
+<script type="module">
+import { VizCore, T, COLORS } from '../lib/viz-core.js';
+
+// ── Triangle helpers ──────────────────────────────────────────────
+function incenter(A, B, C) {
+  const a = Math.hypot(B.x - C.x, B.y - C.y);
+  const b = Math.hypot(A.x - C.x, A.y - C.y);
+  const c = Math.hypot(A.x - B.x, A.y - B.y);
+  const s = a + b + c;
+  return { x: (a * A.x + b * B.x + c * C.x) / s, y: (a * A.y + b * B.y + c * C.y) / s };
+}
+
+function distPointLine(P, A, B) {
+  const dx = B.x - A.x, dy = B.y - A.y;
+  return Math.abs(dy * P.x - dx * P.y + B.x * A.y - B.y * A.x) / Math.hypot(dx, dy);
+}
+
+function foot(P, A, B) {
+  const dx = B.x - A.x, dy = B.y - A.y;
+  const t = ((P.x - A.x) * dx + (P.y - A.y) * dy) / (dx * dx + dy * dy);
+  return { x: A.x + t * dx, y: A.y + t * dy };
+}
+
+function angleBisectorDir(A, B, C) {
+  // Direction from B bisecting angle ABC
+  const dBA = Math.hypot(A.x - B.x, A.y - B.y);
+  const dBC = Math.hypot(C.x - B.x, C.y - B.y);
+  const ux = (A.x - B.x) / dBA + (C.x - B.x) / dBC;
+  const uy = (A.y - B.y) / dBA + (C.y - B.y) / dBC;
+  return { x: ux, y: uy };
+}
+
+function drawTriangle(cx, pts, col, lw = 1.5, alpha = 1) {
+  cx.save(); cx.globalAlpha = alpha;
+  cx.beginPath();
+  cx.moveTo(pts[0].x, pts[0].y);
+  pts.slice(1).forEach(p => cx.lineTo(p.x, p.y));
+  cx.closePath();
+  cx.strokeStyle = col; cx.lineWidth = lw; cx.stroke();
+  cx.restore();
+}
+
+function drawDot(cx, x, y, r, col) {
+  cx.beginPath(); cx.arc(x, y, r, 0, Math.PI * 2);
+  cx.fillStyle = col; cx.shadowColor = col; cx.shadowBlur = 8; cx.fill(); cx.shadowBlur = 0;
+}
+
+function drawPerpWithMarker(cx, I, P1, P2, col, showLabel, labelText) {
+  const F = foot(I, P1, P2);
+  cx.beginPath(); cx.moveTo(I.x, I.y); cx.lineTo(F.x, F.y);
+  cx.strokeStyle = col; cx.lineWidth = 2;
+  cx.shadowColor = col; cx.shadowBlur = 4; cx.stroke(); cx.shadowBlur = 0;
+
+  // Right angle marker
+  const dx = F.x - I.x, dy = F.y - I.y;
+  const len = Math.hypot(dx, dy);
+  if (len > 5) {
+    const ux = dx / len * 10, uy = dy / len * 10;
+    const nx = -uy, ny = ux;
+    cx.beginPath();
+    cx.moveTo(F.x - ux + nx, F.y - uy + ny);
+    cx.lineTo(F.x + nx, F.y + ny);
+    cx.lineTo(F.x + ux + nx, F.y + uy + ny);
+    cx.strokeStyle = col; cx.lineWidth = 1; cx.stroke();
+  }
+
+  drawDot(cx, F.x, F.y, 4, col);
+
+  if (showLabel && labelText) {
+    const mx = (I.x + F.x) / 2, my = (I.y + F.y) / 2;
+    cx.font = '11px monospace'; cx.textAlign = 'center';
+    cx.fillStyle = col;
+    const off = 12;
+    const perpX = -(F.y - I.y) / (len || 1) * off;
+    const perpY = (F.x - I.x) / (len || 1) * off;
+    cx.fillText(labelText, mx + perpX, my + perpY);
+  }
+
+  return F;
+}
+
+// ── Default triangle vertices (draggable) ────────────────────────
+let verts = [
+  { x: 300, y: 60  },
+  { x: 140, y: 290 },
+  { x: 460, y: 290 },
+];
+
+// ── Draggable point on bisector (stage 1) ────────────────────────
+let bisectorT = 0.45; // parameter 0..1 along bisector ray from vertex A
+let draggingBisPoint = false;
+
+// ── Stage tracking via MutationObserver ──────────────────────────
+let currentStage = 0;
+
+const { cv, cx, W, H, getCanvasPos } = VizCore.init({
+  title: T('Okrąg wpisany — eksplorator', 'Incircle — Explorer'),
+  H: 360,
+  stages: [
+    // ── Stage 0: What is the incircle ────────────────────────────
+    {
+      title: () => T('Okrąg wpisany — co to jest?', 'Incircle — what is it?'),
+      desc:  () => T(
+        'Okrąg wpisany w trójkąt dotyka wszystkich trzech boków. Jego środek nazywamy incentrum. Przeciągnij wierzchołki trójkąta!',
+        'The incircle of a triangle touches all three sides. Its centre is called the incentre. Drag the triangle vertices!'
+      ),
+      sliders: [],
+      draw(cx, W, H) {
+        const [A, B, C] = verts;
+        const I = incenter(A, B, C);
+        const r = distPointLine(I, A, B);
+
+        drawTriangle(cx, [A, B, C], 'rgba(255,255,255,0.3)', 2);
+
+        // Incircle
+        cx.beginPath(); cx.arc(I.x, I.y, r, 0, Math.PI * 2);
+        cx.strokeStyle = COLORS.CYAN; cx.lineWidth = 2.5;
+        cx.shadowColor = COLORS.CYAN; cx.shadowBlur = 8; cx.stroke(); cx.shadowBlur = 0;
+
+        // Tangent points
+        [foot(I, A, B), foot(I, B, C), foot(I, C, A)].forEach(p => drawDot(cx, p.x, p.y, 4, COLORS.GREEN));
+
+        drawDot(cx, I.x, I.y, 5, COLORS.CYAN);
+        [A, B, C].forEach(p => drawDot(cx, p.x, p.y, dragging ? 9 : 7, COLORS.ORANGE));
+
+        cx.font = '12px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = 'rgba(255,255,255,0.45)'; cx.fillText(T('Przeciągnij wierzchołki!', 'Drag vertices!'), 16, 22);
+        cx.fillStyle = COLORS.CYAN; cx.fillText(T('I = incentrum (środek wpisany)', 'I = incentre'), 16, 40);
+        cx.fillStyle = COLORS.GREEN; cx.fillText(T('● punkty styczne z bokami', '● tangent points'), 16, 58);
+      },
+    },
+
+    // ── Stage 1: Symmetry of angle bisector ──────────────────────
+    {
+      title: () => T('Symetria dwusiecznej', 'Bisector symmetry'),
+      desc:  () => T(
+        'Wyobraź sobie, że stoisz dokładnie na dwusiecznej kąta A. Jesteś jednakowo blisko obu ramion! Dlaczego? Bo dwusieczna to oś symetrii kąta — złóż kąt wzdłuż dwusiecznej, a jedno ramię pokryje drugie.\n\nPrzesuń punkt po dwusiecznej!',
+        'Imagine standing right on the bisector of angle A. You are equidistant from both arms! Why? Because the bisector is the axis of symmetry of the angle — fold along the bisector and one arm covers the other.\n\nDrag the point along the bisector!'
+      ),
+      sliders: [],
+      draw(cx, W, H) {
+        const [A, B, C] = verts;
+
+        // Draw the full triangle faintly
+        drawTriangle(cx, [A, B, C], 'rgba(255,255,255,0.12)', 1);
+
+        // Highlight sides AB and AC (the two arms of angle A)
+        cx.beginPath(); cx.moveTo(A.x, A.y); cx.lineTo(B.x, B.y);
+        cx.strokeStyle = COLORS.YELLOW; cx.lineWidth = 2.5; cx.stroke();
+        cx.beginPath(); cx.moveTo(A.x, A.y); cx.lineTo(C.x, C.y);
+        cx.strokeStyle = COLORS.PINK; cx.lineWidth = 2.5; cx.stroke();
+
+        // Side BC faint
+        cx.beginPath(); cx.moveTo(B.x, B.y); cx.lineTo(C.x, C.y);
+        cx.strokeStyle = 'rgba(255,255,255,0.15)'; cx.lineWidth = 1; cx.stroke();
+
+        // Bisector direction from A
+        const bisDir = angleBisectorDir(B, A, C); // bisector of angle at A
+        const bisLen = Math.hypot(bisDir.x, bisDir.y);
+        const bux = bisDir.x / bisLen, buy = bisDir.y / bisLen;
+
+        // Find max extent of bisector (to opposite side BC)
+        const I = incenter(A, B, C);
+        const maxDist = Math.hypot(I.x - A.x, I.y - A.y) * 1.6;
+
+        // Draw bisector line (dashed)
+        cx.beginPath(); cx.moveTo(A.x, A.y);
+        cx.lineTo(A.x + bux * maxDist, A.y + buy * maxDist);
+        cx.strokeStyle = COLORS.CYAN; cx.lineWidth = 2;
+        cx.setLineDash([6, 4]); cx.stroke(); cx.setLineDash([]);
+
+        // Draggable point on bisector
+        const minT = 0.15, maxT = 0.95;
+        const t = minT + bisectorT * (maxT - minT);
+        const P = { x: A.x + bux * maxDist * t, y: A.y + buy * maxDist * t };
+
+        // Perpendicular distances to AB and AC
+        const d1 = distPointLine(P, A, B);
+        const d2 = distPointLine(P, A, C);
+        const F1 = foot(P, A, B);
+        const F2 = foot(P, A, C);
+
+        // Draw perpendiculars
+        cx.beginPath(); cx.moveTo(P.x, P.y); cx.lineTo(F1.x, F1.y);
+        cx.strokeStyle = COLORS.YELLOW; cx.lineWidth = 2;
+        cx.shadowColor = COLORS.YELLOW; cx.shadowBlur = 4; cx.stroke(); cx.shadowBlur = 0;
+
+        cx.beginPath(); cx.moveTo(P.x, P.y); cx.lineTo(F2.x, F2.y);
+        cx.strokeStyle = COLORS.PINK; cx.lineWidth = 2;
+        cx.shadowColor = COLORS.PINK; cx.shadowBlur = 4; cx.stroke(); cx.shadowBlur = 0;
+
+        // Right angle markers
+        const sz = 8;
+        [[F1, A, B, COLORS.YELLOW], [F2, A, C, COLORS.PINK]].forEach(([F, S1, S2, col]) => {
+          const dx = S2.x - S1.x, dy = S2.y - S1.y;
+          const slen = Math.hypot(dx, dy);
+          const sx = dx / slen, sy = dy / slen; // along side
+          const px = P.x - F.x, py = P.y - F.y;
+          const plen = Math.hypot(px, py);
+          if (plen > 3) {
+            const nx = px / plen, ny = py / plen; // toward P
+            cx.beginPath();
+            cx.moveTo(F.x + sx * sz, F.y + sy * sz);
+            cx.lineTo(F.x + sx * sz + nx * sz, F.y + sy * sz + ny * sz);
+            cx.lineTo(F.x + nx * sz, F.y + ny * sz);
+            cx.strokeStyle = col; cx.lineWidth = 1; cx.stroke();
+          }
+        });
+
+        drawDot(cx, F1.x, F1.y, 4, COLORS.YELLOW);
+        drawDot(cx, F2.x, F2.y, 4, COLORS.PINK);
+
+        // Distance labels
+        const m1x = (P.x + F1.x) / 2, m1y = (P.y + F1.y) / 2;
+        const m2x = (P.x + F2.x) / 2, m2y = (P.y + F2.y) / 2;
+        cx.font = 'bold 13px monospace'; cx.textAlign = 'center';
+        const d1Len = Math.hypot(F1.x - P.x, F1.y - P.y);
+        const d2Len = Math.hypot(F2.x - P.x, F2.y - P.y);
+        const n1x = -(F1.y - P.y) / (d1Len || 1) * 14;
+        const n1y = (F1.x - P.x) / (d1Len || 1) * 14;
+        const n2x = -(F2.y - P.y) / (d2Len || 1) * 14;
+        const n2y = (F2.x - P.x) / (d2Len || 1) * 14;
+        cx.fillStyle = COLORS.YELLOW;
+        cx.fillText(Math.round(d1) + ' px', m1x + n1x, m1y + n1y);
+        cx.fillStyle = COLORS.PINK;
+        cx.fillText(Math.round(d2) + ' px', m2x + n2x, m2y + n2y);
+
+        // Vertex labels
+        cx.font = 'bold 14px monospace'; cx.textAlign = 'center';
+        cx.fillStyle = COLORS.ORANGE;
+        cx.fillText('A', A.x, A.y - 14);
+        cx.fillStyle = 'rgba(255,255,255,0.4)';
+        cx.fillText('B', B.x - 14, B.y + 6);
+        cx.fillText('C', C.x + 14, C.y + 6);
+
+        // Draw vertex dots
+        drawDot(cx, A.x, A.y, 6, COLORS.ORANGE);
+        drawDot(cx, B.x, B.y, 5, 'rgba(255,255,255,0.3)');
+        drawDot(cx, C.x, C.y, 5, 'rgba(255,255,255,0.3)');
+
+        // Draggable point (larger, glowing)
+        drawDot(cx, P.x, P.y, draggingBisPoint ? 11 : 9, COLORS.ORANGE);
+
+        // Equality badge
+        cx.font = 'bold 13px monospace'; cx.textAlign = 'left';
+        const eq = Math.abs(d1 - d2) < 1;
+        cx.fillStyle = eq ? COLORS.GREEN : COLORS.ORANGE;
+        cx.fillText(
+          T('d\u2081 = ' + Math.round(d1) + '   d\u2082 = ' + Math.round(d2) + (eq ? '   \u2713 Równe!' : ''),
+            'D\u2081 = ' + Math.round(d1) + '   D\u2082 = ' + Math.round(d2) + (eq ? '   \u2713 Equal!' : '')),
+          16, 22
+        );
+        cx.fillStyle = 'rgba(255,255,255,0.4)'; cx.font = '11px monospace';
+        cx.fillText(T('Dwusieczna = oś symetrii kąta', 'Bisector = axis of symmetry of the angle'), 16, 40);
+        cx.fillStyle = 'rgba(255,255,255,0.3)'; cx.font = '11px monospace';
+        cx.fillText(T('Przesuń punkt po dwusiecznej!', 'Drag the point along the bisector!'), 16, 56);
+      },
+    },
+
+    // ── Stage 2: Why bisectors meet — the logic ──────────────────
+    {
+      title: () => T('Dlaczego dwusieczne się spotykają?', 'Why do bisectors meet?'),
+      desc:  () => T(
+        'Punkt na dwusiecznej kąta B jest jednakowo odległy od boków AB i BC.\nPunkt na dwusiecznej kąta C jest jednakowo odległy od boków BC i CA.\n\nPunkt odległy jednakowo od WSZYSTKICH trzech boków musi leżeć na WSZYSTKICH trzech dwusiecznych!\nDlatego trzy dwusieczne MUSZĄ się spotkać w jednym punkcie!',
+        'A point on the bisector of angle B is equidistant from sides AB and BC.\nA point on the bisector of angle C is equidistant from sides BC and CA.\n\nA point equidistant from ALL three sides must lie on ALL three bisectors!\nThat is why three bisectors MUST meet at one point!'
+      ),
+      sliders: [],
+      draw(cx, W, H) {
+        const [A, B, C] = verts;
+        const I = incenter(A, B, C);
+        const r = distPointLine(I, A, B);
+
+        drawTriangle(cx, [A, B, C], 'rgba(255,255,255,0.25)', 1.5);
+
+        // Draw bisectors with labels
+        const bisData = [
+          { V: A, label: 'A', col: COLORS.YELLOW },
+          { V: B, label: 'B', col: COLORS.PINK },
+          { V: C, label: 'C', col: COLORS.PURPLE },
+        ];
+
+        bisData.forEach(({ V, col }) => {
+          cx.beginPath(); cx.moveTo(V.x, V.y); cx.lineTo(I.x, I.y);
+          const dx = I.x - V.x, dy = I.y - V.y;
+          const len = Math.hypot(dx, dy);
+          cx.lineTo(I.x + dx / len * 35, I.y + dy / len * 35);
+          cx.strokeStyle = col; cx.lineWidth = 2;
+          cx.setLineDash([5, 4]); cx.stroke(); cx.setLineDash([]);
+        });
+
+        // Draw the three perpendiculars from I to each side, labeled "r"
+        const sides = [[A, B], [B, C], [C, A]];
+        const perpCols = [COLORS.YELLOW, COLORS.PINK, COLORS.GREEN];
+        sides.forEach(([P1, P2], i) => {
+          drawPerpWithMarker(cx, I, P1, P2, perpCols[i], true, 'r');
+        });
+
+        // Incircle faint
+        cx.beginPath(); cx.arc(I.x, I.y, r, 0, Math.PI * 2);
+        cx.strokeStyle = COLORS.CYAN; cx.lineWidth = 2; cx.globalAlpha = 0.35; cx.stroke(); cx.globalAlpha = 1;
+
+        drawDot(cx, I.x, I.y, 7, COLORS.CYAN);
+        [A, B, C].forEach(p => drawDot(cx, p.x, p.y, 6, COLORS.ORANGE));
+
+        // Vertex labels
+        cx.font = 'bold 13px monospace'; cx.textAlign = 'center';
+        cx.fillStyle = COLORS.ORANGE;
+        cx.fillText('A', A.x, A.y - 12);
+        cx.fillText('B', B.x - 14, B.y + 6);
+        cx.fillText('C', C.x + 14, C.y + 6);
+
+        // Legend
+        cx.font = '12px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = COLORS.CYAN;
+        cx.fillText(T('I = punkt przecięcia WSZYSTKICH dwusiecznych', 'I = intersection of ALL bisectors'), 16, 22);
+        cx.fillStyle = 'rgba(255,255,255,0.4)';
+        cx.fillText(T('Równo odległy od 3 boków \u2192 leży na 3 dwusiecznych', 'Equidistant from 3 sides \u2192 lies on 3 bisectors'), 16, 40);
+      },
+    },
+
+    // ── Stage 3: Equal distances = incircle ──────────────────────
+    {
+      title: () => T('Równe odległości = okrąg wpisany', 'Equal distances = incircle'),
+      desc:  () => T(
+        'Skoro incentrum I jest równo odległe od każdego boku, to zakreślając okrąg o promieniu r = odległość od boku, dostajemy okrąg dotykający WSZYSTKICH trzech boków!\n\nTo jest okrąg wpisany. Promień r to promień wpisany (inradius).',
+        'Since incentre I is equidistant from every side, drawing a circle of radius r = distance to side gives a circle touching ALL three sides!\n\nThis is the incircle. Radius r is the inradius.'
+      ),
+      sliders: [],
+      draw(cx, W, H) {
+        const [A, B, C] = verts;
+        const I = incenter(A, B, C);
+        const r = distPointLine(I, A, B);
+
+        drawTriangle(cx, [A, B, C], 'rgba(255,255,255,0.3)', 2);
+
+        // Perpendiculars to each side with right-angle markers and labels
+        const sides = [[A, B], [B, C], [C, A]];
+        const perpCols = [COLORS.YELLOW, COLORS.PINK, COLORS.GREEN];
+        sides.forEach(([P1, P2], i) => {
+          drawPerpWithMarker(cx, I, P1, P2, perpCols[i], true, 'r');
+        });
+
+        // Incircle
+        cx.beginPath(); cx.arc(I.x, I.y, r, 0, Math.PI * 2);
+        cx.strokeStyle = COLORS.CYAN; cx.lineWidth = 2.5;
+        cx.shadowColor = COLORS.CYAN; cx.shadowBlur = 8; cx.stroke(); cx.shadowBlur = 0;
+
+        drawDot(cx, I.x, I.y, 5, COLORS.CYAN);
+        [A, B, C].forEach(p => drawDot(cx, p.x, p.y, 6, COLORS.ORANGE));
+
+        cx.font = '12px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = COLORS.CYAN;
+        cx.fillText('r = ' + Math.round(r) + ' px  (' + T('promień wpisany', 'inradius') + ')', 16, 22);
+        cx.fillStyle = 'rgba(255,255,255,0.45)';
+        cx.fillText(T('Wszystkie trzy prostopadłe mają tę samą długość!', 'All three perpendiculars have the same length!'), 16, 40);
+      },
+    },
+
+    // ── Stage 4: Explore — drag vertices ─────────────────────────
+    {
+      title: () => T('Eksploruj — przeciągaj wierzchołki', 'Explore — drag the vertices'),
+      desc:  () => T(
+        'Przeciągnij dowolny wierzchołek. Okrąg wpisany, dwusieczne i wszystkie odległości aktualizują się na bieżąco.\n\nSpróbuj: trójkąt prostokątny, równoboczny, bardzo spłaszczony... Co się dzieje z okręgiem?',
+        'Drag any vertex. The incircle, bisectors, and all distances update live.\n\nTry: right triangle, equilateral, very flat... What happens to the circle?'
+      ),
+      sliders: [],
+      draw(cx, W, H) {
+        const [A, B, C] = verts;
+        const I = incenter(A, B, C);
+        const r = distPointLine(I, A, B);
+
+        drawTriangle(cx, [A, B, C], 'rgba(255,255,255,0.3)', 2);
+
+        // Bisectors
+        const bisColours = [COLORS.YELLOW, COLORS.PINK, COLORS.PURPLE];
+        [A, B, C].forEach((V, i) => {
+          cx.beginPath(); cx.moveTo(V.x, V.y); cx.lineTo(I.x, I.y);
+          cx.strokeStyle = bisColours[i]; cx.lineWidth = 1.5;
+          cx.setLineDash([4, 4]); cx.stroke(); cx.setLineDash([]);
+        });
+
+        // Tangent points
+        [[A, B], [B, C], [C, A]].forEach(([P1, P2]) => {
+          const F = foot(I, P1, P2);
+          drawDot(cx, F.x, F.y, 4, COLORS.GREEN);
+        });
+
+        // Incircle
+        cx.beginPath(); cx.arc(I.x, I.y, r, 0, Math.PI * 2);
+        cx.strokeStyle = COLORS.CYAN; cx.lineWidth = 2.5;
+        cx.shadowColor = COLORS.CYAN; cx.shadowBlur = 8; cx.stroke(); cx.shadowBlur = 0;
+
+        drawDot(cx, I.x, I.y, 5, COLORS.CYAN);
+        [A, B, C].forEach(p => drawDot(cx, p.x, p.y, 9, COLORS.ORANGE));
+
+        // Stats
+        const a = Math.hypot(B.x - C.x, B.y - C.y);
+        const b = Math.hypot(A.x - C.x, A.y - C.y);
+        const c = Math.hypot(A.x - B.x, A.y - B.y);
+        const s = (a + b + c) / 2;
+        const area = Math.abs((B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y)) / 2;
+        const rCalc = area / s;
+
+        cx.font = '12px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = COLORS.CYAN;
+        cx.fillText('r = ' + T('Pole', 'Area') + ' / s = ' + Math.round(rCalc), 16, 22);
+        cx.fillStyle = 'rgba(255,255,255,0.4)';
+        cx.fillText('s = ' + T('półobwód', 'semiperimeter') + ' = ' + Math.round(s), 16, 40);
+      },
+    },
+  ],
+});
+
+// ── Track current stage via MutationObserver ─────────────────────
+const dotsEl = document.getElementById('qdots');
+new MutationObserver(() => {
+  const dots = dotsEl.querySelectorAll('.dot');
+  dots.forEach((d, i) => { if (d.classList.contains('active')) currentStage = i; });
+}).observe(dotsEl, { subtree: true, attributes: true, attributeFilter: ['class'] });
+
+// ── Drag vertex interaction ───────────────────────────────────────
+let dragging = null;
+cv.classList.add('draggable');
+
+function getBisectorPointPos() {
+  const [A, B, C] = verts;
+  const bisDir = angleBisectorDir(B, A, C);
+  const bisLen = Math.hypot(bisDir.x, bisDir.y);
+  const bux = bisDir.x / bisLen, buy = bisDir.y / bisLen;
+  const I = incenter(A, B, C);
+  const maxDist = Math.hypot(I.x - A.x, I.y - A.y) * 1.6;
+  const minT = 0.15, maxT = 0.95;
+  const t = minT + bisectorT * (maxT - minT);
+  return {
+    P: { x: A.x + bux * maxDist * t, y: A.y + buy * maxDist * t },
+    bux, buy, maxDist, minT, maxT
+  };
+}
+
+function onDown(e) {
+  const pos = getCanvasPos(e);
+
+  if (currentStage === 1) {
+    // Check if clicking near the bisector draggable point
+    const { P } = getBisectorPointPos();
+    if (Math.hypot(P.x - pos.x, P.y - pos.y) < 24) {
+      draggingBisPoint = true;
+      if (e.preventDefault) e.preventDefault();
+      return;
+    }
+  }
+
+  dragging = verts.find(v => Math.hypot(v.x - pos.x, v.y - pos.y) < 24) || null;
+  if (dragging && e.preventDefault) e.preventDefault();
+}
+
+function onMove(e) {
+  if (!dragging && !draggingBisPoint) return;
+  if (e.preventDefault) e.preventDefault();
+  const pos = getCanvasPos(e);
+
+  if (draggingBisPoint) {
+    // Project pos onto bisector line from A
+    const [A] = verts;
+    const { bux, buy, maxDist, minT, maxT } = getBisectorPointPos();
+    const dx = pos.x - A.x, dy = pos.y - A.y;
+    const proj = (dx * bux + dy * buy) / maxDist;
+    bisectorT = Math.max(0, Math.min(1, (proj - minT) / (maxT - minT)));
+    return;
+  }
+
+  if (dragging) {
+    dragging.x = Math.max(20, Math.min(W - 20, pos.x));
+    dragging.y = Math.max(20, Math.min(H - 20, pos.y));
+  }
+}
+
+function onUp() { dragging = null; draggingBisPoint = false; }
+
+cv.addEventListener('mousedown', onDown);
+cv.addEventListener('mousemove', onMove);
+cv.addEventListener('mouseup', onUp);
+cv.addEventListener('mouseleave', onUp);
+cv.addEventListener('touchstart', onDown, { passive: false });
+cv.addEventListener('touchmove', onMove, { passive: false });
+cv.addEventListener('touchend', onUp);
+</script>
+</body>
+</html>

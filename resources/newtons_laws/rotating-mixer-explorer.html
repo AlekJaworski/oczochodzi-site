@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wirujący mikser — potencjał efektywny</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e0e12; font-family: monospace; display: flex; justify-content: center; padding: 2rem 1rem; min-height: 100vh; }
+  .wrap { width: 100%; max-width: 640px; }
+  body.video .wrap { max-width: 960px; }
+  canvas { width: 100%; display: block; border-radius: 10px 10px 0 0; }
+  .panel { background: #16161a; border: 0.5px solid rgba(255,255,255,.1); border-top: 0.5px solid rgba(255,255,255,.07); border-radius: 0 0 10px 10px; padding: .875rem 1.25rem; }
+  #qf { margin: 0 0 5px; font-size: 16px; font-weight: 500; color: #58C4DD; letter-spacing: .02em; }
+  #qd { margin: 0 0 10px; font-size: 13px; line-height: 1.65; color: rgba(255,255,255,.62); min-height: 48px; }
+  #qd .katex { font-size: 1.05em; }
+  .sliders { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .slider-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,.45); }
+  .slider-row span.lbl { font-family: monospace; min-width: 36px; }
+  .slider-row input[type=range] { flex: 1; accent-color: #58C4DD; }
+  .slider-row span.val { font-family: monospace; min-width: 46px; text-align: right; }
+  .nav { display: flex; align-items: center; justify-content: space-between; }
+  button { background: transparent; border: 0.5px solid rgba(255,255,255,.25); color: rgba(255,255,255,.7); padding: 5px 14px; font-size: 13px; border-radius: 6px; cursor: pointer; font-family: monospace; transition: background .15s; }
+  button:hover { background: rgba(255,255,255,.08); }
+  button:disabled { opacity: .3; cursor: default; }
+  #qdots { display: flex; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; cursor: pointer; background: rgba(255,255,255,.18); transition: background .2s; }
+  .dot.active { background: #58C4DD; }
+  #sliders-wrap { min-height: 0; }
+  .reset-row { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+  .reset-row button { font-size: 12px; padding: 3px 10px; color: #FFD166; border-color: rgba(255,209,102,.35); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="cv" width="600" height="310"></canvas>
+  <div class="panel">
+    <p id="qf"></p>
+    <p id="qd"></p>
+    <div id="sliders-wrap"></div>
+    <div class="nav">
+      <button id="qprev">&larr;</button>
+      <div id="qdots"></div>
+      <button id="qnext">&rarr;</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const cv = document.getElementById('cv');
+  const cx = cv.getContext('2d');
+  const W = 600, H = 310;
+
+  // i18n + modes
+  const PARAMS = new URLSearchParams(window.location.search);
+  const LANG = PARAMS.get('lang') || 'pl';
+  if (PARAMS.get('video')) document.body.classList.add('video');
+  const T = (pl, en) => LANG === 'pl' ? pl : en;
+  document.title = T('Wirujący mikser — potencjał efektywny', 'Spinning mixer — effective potential');
+
+  // Palette: #58C4DD cyan, #4a9eff blue, #FF6B35 orange, #83C167 green,
+  //          #FFD166 yellow, #E07090 pink, #C080FF purple
+  const C_CYAN = '#58C4DD', C_YELLOW = '#FFD166', C_GREEN = '#83C167',
+        C_PURPLE = '#C080FF', C_FAINT = 'rgba(255,255,255,.16)';
+
+  // ── Physics (SI units, side cross-section of a cylindrical bowl) ──
+  const G = 9.81;        // m/s²
+  const R = 0.5;         // bowl radius [m]
+  const H0 = 0.22;       // still-liquid depth [m]
+  const BOWL_H = 0.45;   // bowl wall height [m]
+
+  // State
+  let stage = 0;
+  let rpm = 30;          // mixer speed
+  let rp = 0.30;         // force-probe radius [m]
+  let phase = 0;         // rim-marker rotation phase
+  let lastT = null;
+
+  const omega = () => rpm * 2 * Math.PI / 60;
+  // Paraboloid free surface, volume-conserving: mean of r² over the disc is R²/2
+  const z0 = (om) => H0 - om*om*R*R/(4*G);
+  const zSurf = (r, om) => z0(om) + om*om*r*r/(2*G);
+
+  // ── Screen mapping ──
+  const OX = 300, BOTTOM = 282, SC = 360;
+  const px = r => OX + r*SC;
+  const py = z => BOTTOM - z*SC;
+  const RIM_Y = py(BOWL_H);
+  const KF = 5.2;        // px per m/s² for force arrows
+
+  // ── Drawing helpers ──
+  function clear() { cx.fillStyle = '#0e0e12'; cx.fillRect(0, 0, W, H); }
+
+  function arrow(x1, y1, x2, y2, col, lw) {
+    lw = lw || 2.2;
+    const dx = x2-x1, dy = y2-y1, L = Math.hypot(dx,dy);
+    if (L < 3) return;
+    const ux = dx/L, uy = dy/L, hs = Math.min(9, L*0.45);
+    cx.strokeStyle = col; cx.fillStyle = col; cx.lineWidth = lw;
+    cx.beginPath(); cx.moveTo(x1,y1); cx.lineTo(x2 - ux*hs*0.6, y2 - uy*hs*0.6); cx.stroke();
+    cx.beginPath();
+    cx.moveTo(x2, y2);
+    cx.lineTo(x2 - ux*hs - uy*hs*0.45, y2 - uy*hs + ux*hs*0.45);
+    cx.lineTo(x2 - ux*hs + uy*hs*0.45, y2 - uy*hs - ux*hs*0.45);
+    cx.closePath(); cx.fill();
+  }
+
+  function label(txt, x, y, col, align) {
+    cx.font = '11px monospace'; cx.fillStyle = col;
+    cx.textAlign = align || 'left'; cx.fillText(txt, x, y); cx.textAlign = 'left';
+  }
+
+  function drawBowl() {
+    cx.strokeStyle = 'rgba(255,255,255,.4)'; cx.lineWidth = 3; cx.lineCap = 'round';
+    cx.beginPath();
+    cx.moveTo(px(-R), RIM_Y); cx.lineTo(px(-R), BOTTOM);
+    cx.lineTo(px(R), BOTTOM); cx.lineTo(px(R), RIM_Y);
+    cx.stroke(); cx.lineCap = 'butt';
+  }
+
+  function drawAxis() {
+    cx.strokeStyle = 'rgba(255,255,255,.25)'; cx.lineWidth = 1;
+    cx.setLineDash([7,4,2,4]);
+    cx.beginPath(); cx.moveTo(OX, RIM_Y - 38); cx.lineTo(OX, BOTTOM + 6); cx.stroke();
+    cx.setLineDash([]);
+    label(T('oś obrotu','rotation axis'), OX + 6, RIM_Y - 28, 'rgba(255,255,255,.35)');
+  }
+
+  function drawLiquid(om) {
+    const N = 60;
+    cx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const r = -R + 2*R*i/N;
+      const y = py(zSurf(r, om));
+      i === 0 ? cx.moveTo(px(r), y) : cx.lineTo(px(r), y);
+    }
+    cx.lineTo(px(R), BOTTOM); cx.lineTo(px(-R), BOTTOM); cx.closePath();
+    const g = cx.createLinearGradient(0, py(zSurf(R,om)), 0, BOTTOM);
+    g.addColorStop(0, 'rgba(88,196,221,.22)');
+    g.addColorStop(1, 'rgba(74,158,255,.08)');
+    cx.fillStyle = g; cx.fill();
+    // bright free-surface edge
+    cx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const r = -R + 2*R*i/N;
+      const y = py(zSurf(r, om));
+      i === 0 ? cx.moveTo(px(r), y) : cx.lineTo(px(r), y);
+    }
+    cx.strokeStyle = C_CYAN; cx.lineWidth = 2.4;
+    cx.shadowColor = C_CYAN; cx.shadowBlur = 7;
+    cx.stroke(); cx.shadowBlur = 0;
+  }
+
+  // Equipotentials of Φ_eff = gz − ½Ω²r² : congruent parabolas shifted vertically
+  function drawEquipotentials(om, withLabel) {
+    const yMin = RIM_Y - 34;
+    for (let k = -3; k <= 4; k++) {
+      if (k === 0) continue;            // k=0 is the free surface itself
+      const zc = z0(om) + k*0.07;
+      cx.strokeStyle = C_FAINT; cx.lineWidth = 1;
+      cx.setLineDash([5,5]);
+      cx.beginPath();
+      let started = false;
+      for (let i = 0; i <= 60; i++) {
+        const r = -R + 2*R*i/60;
+        const y = py(zc + om*om*r*r/(2*G));
+        if (y < yMin || y > BOTTOM - 2) { started = false; continue; }
+        started ? cx.lineTo(px(r), y) : cx.moveTo(px(r), y);
+        started = true;
+      }
+      cx.stroke(); cx.setLineDash([]);
+    }
+    if (withLabel) {
+      const yl = py(z0(om) + 3*0.07 + om*om*R*R/(2*G));
+      label(T('ekwipotencjały','equipotentials'), px(R) - 4,
+            Math.max(RIM_Y - 22, yl - 6), 'rgba(255,255,255,.4)', 'right');
+    }
+  }
+
+  function drawRimSpinner(om) {
+    if (om <= 0) return;
+    const yr = py(zSurf(R, om));
+    cx.strokeStyle = 'rgba(255,255,255,.22)'; cx.lineWidth = 1;
+    cx.beginPath(); cx.ellipse(OX, yr, R*SC, 11, 0, 0, Math.PI*2); cx.stroke();
+    const mx = OX + R*SC*Math.cos(phase), my = yr + 11*Math.sin(phase);
+    cx.beginPath(); cx.arc(mx, my, 3.5, 0, Math.PI*2);
+    cx.fillStyle = C_YELLOW; cx.shadowColor = C_YELLOW; cx.shadowBlur = 8;
+    cx.fill(); cx.shadowBlur = 0;
+  }
+
+  function drawProbeForces(om, r, withTangent) {
+    const x = px(r), y = py(zSurf(r, om));
+    const gx = 0, gy = G*KF;                 // gravity (down)
+    const cfx = om*om*r*KF, cfy = 0;         // centrifugal (outward)
+    // surface tangent + right-angle marker
+    if (withTangent) {
+      const slope = om*om*r/G;
+      const tl = Math.hypot(1, slope);
+      const tx = 1/tl, ty = -slope/tl;       // screen tangent direction
+      cx.strokeStyle = 'rgba(255,255,255,.35)'; cx.lineWidth = 1;
+      cx.setLineDash([4,4]);
+      cx.beginPath(); cx.moveTo(x - tx*34, y - ty*34); cx.lineTo(x + tx*34, y + ty*34); cx.stroke();
+      cx.setLineDash([]);
+      // small square between tangent and effective-force direction
+      const fl = Math.hypot(cfx, gy), fx = cfx/fl, fy = gy/fl, s = 8;
+      cx.strokeStyle = 'rgba(255,255,255,.5)'; cx.lineWidth = 1;
+      cx.beginPath();
+      cx.moveTo(x + tx*s, y + ty*s);
+      cx.lineTo(x + tx*s + fx*s, y + ty*s + fy*s);
+      cx.lineTo(x + fx*s, y + fy*s);
+      cx.stroke();
+    }
+    if (om > 0) {
+      arrow(x, y, x + cfx, y + cfy, C_GREEN);
+      label(T('odśrodkowa','centrifugal'), x + cfx + 6, y + 4, C_GREEN);
+    }
+    arrow(x, y, x + gx, y + gy, C_YELLOW);
+    label(T('grawitacja','gravity'), x + 6, y + gy + 12, C_YELLOW);
+    arrow(x, y, x + cfx, y + gy, C_CYAN, 2.6);
+    label(T('siła efektywna ⊥ powierzchni','effective force ⊥ surface'),
+          x + cfx + 8, y + gy - 2, C_CYAN);
+    cx.beginPath(); cx.arc(x, y, 3.5, 0, Math.PI*2);
+    cx.fillStyle = C_PURPLE; cx.shadowColor = C_PURPLE; cx.shadowBlur = 8;
+    cx.fill(); cx.shadowBlur = 0;
+  }
+
+  function rpmReadout(om) {
+    cx.font = '12px monospace'; cx.fillStyle = 'rgba(255,255,255,.5)';
+    cx.fillText(`Ω = ${om.toFixed(2)} rad/s  (${rpm} RPM)`, 14, 22);
+  }
+
+  function surfaceLabel(om) {
+    label(T('powierzchnia swobodna','free surface'),
+          px(-R) + 6, py(zSurf(-R, om)) - 8, C_CYAN);
+  }
+
+  // ── Stages ──
+  const stages = [
+    {
+      title: () => T('Mikser w spoczynku', 'Mixer at rest'),
+      desc: () => T(
+        'Przekrój miski miksera. Gdy \\(\\Omega = 0\\), na ciecz działa tylko grawitacja — potencjał to \\(\\Phi = gz\\), a jego ekwipotencjały są poziome. Powierzchnia swobodna układa się na jednej z nich, więc jest płaska.',
+        'Cross-section of a mixer bowl. With \\(\\Omega = 0\\) only gravity acts — the potential is \\(\\Phi = gz\\) and its equipotentials are horizontal. The free surface settles onto one of them, so it is flat.'),
+      sliders: [],
+      draw() {
+        drawEquipotentials(0, true);
+        drawLiquid(0);
+        drawBowl(); drawAxis();
+        surfaceLabel(0);
+        drawProbeForces(0, 0.3, false);
+      }
+    },
+    {
+      title: () => T('Rozkręć mikser', 'Spin it up'),
+      desc: () => T(
+        'Przesuń suwak obrotów. W układzie wirującym pojawia się człon odśrodkowy \\(\\Omega^2 r\\) — skierowany na zewnątrz i rosnący z odległością od osi. Szybszy obrót → silniejszy człon odśrodkowy → powierzchnia mocniej unosi się przy ściankach.',
+        'Drag the speed slider. In the rotating frame a centrifugal term \\(\\Omega^2 r\\) appears — pointing outward and growing with distance from the axis. More spin → a stronger outward term → the surface climbs higher at the walls.'),
+      sliders: [
+        { id: 'rpm', lbl: 'RPM', color: C_CYAN, min: 0, max: 50, step: 1, val: 30 },
+      ],
+      hasReset: true,
+      draw() {
+        const om = omega();
+        drawLiquid(om);
+        drawBowl(); drawAxis(); drawRimSpinner(om);
+        surfaceLabel(om);
+        // centrifugal arrows at sample surface points, both sides
+        [-0.4, -0.2, 0.2, 0.4].forEach(r => {
+          const x = px(r), y = py(zSurf(r, om));
+          const a = om*om*Math.abs(r)*KF * Math.sign(r);
+          if (Math.abs(a) > 3) arrow(x, y, x + a, y, C_GREEN);
+        });
+        if (om > 0) label(T('odśrodkowa  Ω²r','centrifugal  Ω²r'),
+                          px(0.4) + om*om*0.4*KF + 8, py(zSurf(0.4, om)) + 4, C_GREEN);
+        rpmReadout(om);
+      }
+    },
+    {
+      title: () => T('Potencjał efektywny', 'Effective potential'),
+      desc: () => T(
+        'Grawitację i człon odśrodkowy łączymy w jeden potencjał efektywny: \\(\\Phi_{\\mathrm{eff}}(r,z) = gz - \\tfrac{1}{2}\\Omega^2 r^2\\). Jego ekwipotencjały to przystające parabole. Powierzchnia swobodna układa się na jednej ekwipotencjale — dlatego jest parabolą.',
+        'Gravity and the centrifugal term combine into one effective potential: \\(\\Phi_{\\mathrm{eff}}(r,z) = gz - \\tfrac{1}{2}\\Omega^2 r^2\\). Its equipotentials are congruent parabolas. The free surface settles onto one equipotential — that is why it is a parabola.'),
+      sliders: [
+        { id: 'rpm', lbl: 'RPM', color: C_CYAN, min: 0, max: 50, step: 1, val: 30 },
+      ],
+      hasReset: true,
+      draw() {
+        const om = omega();
+        drawEquipotentials(om, true);
+        drawLiquid(om);
+        drawBowl(); drawAxis(); drawRimSpinner(om);
+        surfaceLabel(om);
+        rpmReadout(om);
+      }
+    },
+    {
+      title: () => T('Siła ⊥ ekwipotencjał', 'Force ⊥ equipotentials'),
+      desc: () => T(
+        'Siła efektywna to minus gradient potencjału: \\(\\mathbf{F}_{\\mathrm{eff}} = -\\nabla\\Phi_{\\mathrm{eff}}\\). Gradient jest prostopadły do linii ekwipotencjalnych, więc wypadkowa grawitacji i siły odśrodkowej jest zawsze prostopadła do powierzchni swobodnej. Przesuń punkt \\(r\\) i zmień obroty.',
+        'The effective force is minus the gradient of the potential: \\(\\mathbf{F}_{\\mathrm{eff}} = -\\nabla\\Phi_{\\mathrm{eff}}\\). A gradient is perpendicular to equipotential lines, so the resultant of gravity and the centrifugal force is always perpendicular to the free surface. Move the probe point \\(r\\) and change the speed.'),
+      sliders: [
+        { id: 'rpm', lbl: 'RPM', color: C_CYAN, min: 0, max: 50, step: 1, val: 30 },
+        { id: 'rp', lbl: 'r', color: C_PURPLE, min: 0, max: 0.45, step: 0.01, val: 0.30 },
+      ],
+      hasReset: true,
+      draw() {
+        const om = omega();
+        drawEquipotentials(om, true);
+        drawLiquid(om);
+        drawBowl(); drawAxis(); drawRimSpinner(om);
+        drawProbeForces(om, rp, true);
+        rpmReadout(om);
+      }
+    },
+    {
+      title: () => T('Parabola → paraboloida', 'Parabola → paraboloid'),
+      desc: () => T(
+        'Z warunku \\(\\Phi_{\\mathrm{eff}} = \\mathrm{const}\\) dostajemy kształt powierzchni: \\(z(r) = z_0 + \\frac{\\Omega^2}{2g}\\,r^2\\). Przekrój to parabola; obrócona wokół osi daje paraboloidę (nie hiperboloidę!). Współczynnik \\(\\Omega^2/2g\\) rośnie z kwadratem obrotów.',
+        'The condition \\(\\Phi_{\\mathrm{eff}} = \\mathrm{const}\\) gives the surface shape: \\(z(r) = z_0 + \\frac{\\Omega^2}{2g}\\,r^2\\). The cross-section is a parabola; rotated about the axis it sweeps out a paraboloid (not a hyperboloid!). The coefficient \\(\\Omega^2/2g\\) grows with the square of the speed.'),
+      sliders: [
+        { id: 'rpm', lbl: 'RPM', color: C_CYAN, min: 0, max: 50, step: 1, val: 30 },
+      ],
+      hasReset: true,
+      draw() {
+        const om = omega();
+        drawEquipotentials(om, false);
+        drawLiquid(om);
+        // 3D hint: inner ellipses of the paraboloid at a few radii
+        cx.strokeStyle = 'rgba(88,196,221,.25)'; cx.lineWidth = 1;
+        [0.17, 0.31, 0.43].forEach(r => {
+          cx.beginPath();
+          cx.ellipse(OX, py(zSurf(r, om)), r*SC, 11*r/R + 2, 0, 0, Math.PI*2);
+          cx.stroke();
+        });
+        drawBowl(); drawAxis(); drawRimSpinner(om);
+        surfaceLabel(om);
+        const dz = om*om*R*R/(2*G);
+        cx.font = '12px monospace'; cx.fillStyle = 'rgba(255,255,255,.5)';
+        cx.fillText(`Ω = ${om.toFixed(2)} rad/s  (${rpm} RPM)`, 14, 22);
+        cx.fillText(T(`wzniesienie przy ściance: ${(dz*100).toFixed(1)} cm`,
+                      `rise at the wall: ${(dz*100).toFixed(1)} cm`), 14, 40);
+      }
+    },
+  ];
+
+  // ── Slider management ──
+  const slWrap = document.getElementById('sliders-wrap');
+  function fmt(v, step) { return (+v).toFixed(step < 1 ? (step < 0.1 ? 2 : 1) : 0); }
+
+  function buildSliders(defs, hasReset) {
+    let html = '<div class="sliders">';
+    defs.forEach(s => {
+      html += `<div class="slider-row">
+        <span class="lbl" style="color:${s.color}">${s.lbl} =</span>
+        <input type="range" id="s_${s.id}" min="${s.min}" max="${s.max}" step="${s.step}" value="${s.val}">
+        <span class="val" id="v_${s.id}" style="color:${s.color}"></span>
+      </div>`;
+    });
+    html += '</div>';
+    if (hasReset) {
+      html += `<div class="reset-row"><button id="qreset">⟲ Ω = 0</button></div>`;
+    }
+    slWrap.innerHTML = html;
+    defs.forEach(s => {
+      const el = document.getElementById('s_' + s.id);
+      document.getElementById('v_' + s.id).textContent = fmt(el.value, s.step);
+      el.addEventListener('input', function() {
+        const v = +this.value;
+        document.getElementById('v_' + s.id).textContent = fmt(v, s.step);
+        if (s.id === 'rpm') rpm = v;
+        if (s.id === 'rp') rp = v;
+      });
+    });
+    const rb = document.getElementById('qreset');
+    if (rb) rb.addEventListener('click', () => {
+      rpm = 0;
+      const el = document.getElementById('s_rpm');
+      if (el) { el.value = 0; document.getElementById('v_rpm').textContent = '0'; }
+    });
+  }
+
+  // ── Navigation ──
+  const prevBtn = document.getElementById('qprev');
+  const nextBtn = document.getElementById('qnext');
+  const dotsEl = document.getElementById('qdots');
+  const titleEl = document.getElementById('qf');
+  const descEl = document.getElementById('qd');
+
+  function renderMath() {
+    if (window.renderMathInElement) {
+      renderMathInElement(descEl, {
+        delimiters: [
+          { left: '\\(', right: '\\)', display: false },
+          { left: '\\[', right: '\\]', display: true },
+        ],
+        throwOnError: false,
+      });
+    }
+  }
+
+  function goTo(idx) {
+    stage = Math.max(0, Math.min(stages.length - 1, idx));
+    const s = stages[stage];
+    titleEl.textContent = s.title();
+    descEl.innerHTML = s.desc();
+    renderMath();
+    if (s.sliders && s.sliders.length) {
+      s.sliders.forEach(sl => {            // sync from state
+        if (sl.id === 'rpm') sl.val = rpm;
+        if (sl.id === 'rp') sl.val = rp;
+      });
+      buildSliders(s.sliders, s.hasReset);
+    } else { slWrap.innerHTML = ''; }
+    prevBtn.disabled = stage === 0;
+    nextBtn.disabled = stage === stages.length - 1;
+    renderDots();
+  }
+
+  function renderDots() {
+    dotsEl.innerHTML = stages.map((_, i) =>
+      `<span class="dot${i === stage ? ' active' : ''}" data-i="${i}"></span>`
+    ).join('');
+    dotsEl.querySelectorAll('.dot').forEach(d =>
+      d.addEventListener('click', () => goTo(+d.dataset.i))
+    );
+  }
+
+  prevBtn.addEventListener('click', () => goTo(stage - 1));
+  nextBtn.addEventListener('click', () => goTo(stage + 1));
+  window.addEventListener('load', renderMath);   // KaTeX may load after first goTo
+
+  function tick(now) {
+    if (lastT !== null) phase += omega() * (now - lastT) / 1000;
+    lastT = now;
+    clear(); stages[stage].draw();
+    requestAnimationFrame(tick);
+  }
+  goTo(0);
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

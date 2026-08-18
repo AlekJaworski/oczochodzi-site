@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dlaczego pochodna x² to 2x?</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e0e12; font-family: monospace; display: flex; justify-content: center; padding: 2rem 1rem; min-height: 100vh; }
+  .wrap { width: 100%; max-width: 640px; }
+  canvas { width: 100%; display: block; border-radius: 10px 10px 0 0; }
+  .panel { background: #16161a; border: 0.5px solid rgba(255,255,255,.1); border-top: 0.5px solid rgba(255,255,255,.07); border-radius: 0 0 10px 10px; padding: .875rem 1.25rem; }
+  #qf { margin: 0 0 5px; font-size: 16px; font-weight: 500; color: #58C4DD; letter-spacing: .02em; }
+  #qd { margin: 0 0 10px; font-size: 13px; line-height: 1.65; color: rgba(255,255,255,.62); min-height: 48px; }
+  .sliders { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .slider-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,.45); }
+  .slider-row span.lbl { font-family: monospace; min-width: 36px; }
+  .slider-row input[type=range] { flex: 1; accent-color: #58C4DD; }
+  .slider-row span.val { font-family: monospace; min-width: 46px; text-align: right; }
+  .nav { display: flex; align-items: center; justify-content: space-between; }
+  button { background: transparent; border: 0.5px solid rgba(255,255,255,.25); color: rgba(255,255,255,.7); padding: 5px 14px; font-size: 13px; border-radius: 6px; cursor: pointer; font-family: monospace; transition: background .15s; }
+  button:hover { background: rgba(255,255,255,.08); }
+  button:disabled { opacity: .3; cursor: default; }
+  #qdots { display: flex; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; cursor: pointer; background: rgba(255,255,255,.18); transition: background .2s; }
+  .dot.active { background: #58C4DD; }
+  #sliders-wrap { min-height: 0; }
+  .link-btn { display: inline-block; margin-top: 8px; padding: 6px 14px; border-radius: 6px; background: rgba(88,196,221,.12); border: 1px solid rgba(88,196,221,.3); color: #58C4DD; font-size: 12px; text-decoration: none; font-family: monospace; transition: background .15s; }
+  .link-btn:hover { background: rgba(88,196,221,.22); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="cv" width="600" height="310"></canvas>
+  <div class="panel">
+    <p id="qf"></p>
+    <p id="qd"></p>
+    <div id="sliders-wrap"></div>
+    <div class="nav">
+      <button id="qprev">&larr;</button>
+      <div id="qdots"></div>
+      <button id="qnext">&rarr;</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { GraphView } from '../lib/graph-core.js';
+
+(function(){
+  const cv = document.getElementById('cv');
+  const cx = cv.getContext('2d');
+  const W = 600, H = 310;
+
+  const LANG = new URLSearchParams(window.location.search).get('lang') || 'pl';
+  const T = (pl, en) => LANG === 'pl' ? pl : en;
+
+  const COL_CURVE = '#58C4DD';
+  const COL_P = '#4a9eff';
+  const COL_Q = '#FF6B35';
+  const COL_PQ = '#83C167';
+  const COL_DX = '#FFD166';
+  const COL_DX2 = '#E07090';
+
+  function makeGV() {
+    return new GraphView(cx, { xRange: [-8, 8], yRange: [-2, 8], rect: [0, 0, W, H] });
+  }
+
+  let x0 = 3, dx = 2;
+  let stage = 0;
+
+  function clear() { cx.fillStyle = '#0e0e12'; cx.fillRect(0, 0, W, H); }
+
+  // ── Rectangle drawing for area model ─────────────────────────
+  function drawRect(p, dxVal) {
+    const margin = 60;
+    const maxSide = Math.abs(p) + Math.abs(dxVal) + 0.5;
+    const scale = Math.min((W - margin * 2) / maxSide, (H - margin * 2) / maxSide, 80);
+
+    const pW = Math.abs(p) * scale;
+    const dxW = Math.abs(dxVal) * scale;
+    const totalW = pW + dxW;
+    const totalH = pW + dxW; // square: both sides are (p + Δx)
+    const offX = (W - totalW) / 2;
+    const offY = (H - totalH) / 2 - 10;
+
+    // p·p area
+    cx.fillStyle = COL_PQ + '30'; cx.strokeStyle = COL_PQ + '60'; cx.lineWidth = 1;
+    cx.fillRect(offX, offY, pW, pW); cx.strokeRect(offX, offY, pW, pW);
+
+    // p·Δx right strip
+    cx.fillStyle = COL_P + '25'; cx.strokeStyle = COL_P + '50';
+    cx.fillRect(offX + pW, offY, dxW, pW); cx.strokeRect(offX + pW, offY, dxW, pW);
+
+    // Δx·p bottom strip
+    cx.fillStyle = COL_Q + '25'; cx.strokeStyle = COL_Q + '50';
+    cx.fillRect(offX, offY + pW, pW, dxW); cx.strokeRect(offX, offY + pW, pW, dxW);
+
+    // Δx² corner
+    const dxSmall = dxVal < 0.5;
+    cx.fillStyle = dxSmall ? 'rgba(255,255,255,0.03)' : COL_DX2 + '20';
+    cx.strokeStyle = dxSmall ? 'rgba(255,255,255,0.08)' : COL_DX2 + '40';
+    cx.fillRect(offX + pW, offY + pW, dxW, dxW); cx.strokeRect(offX + pW, offY + pW, dxW, dxW);
+
+    // Labels inside
+    cx.font = '12px monospace'; cx.textAlign = 'center';
+    if (pW > 30) { cx.fillStyle = COL_PQ; cx.fillText('x²', offX + pW/2, offY + pW/2 + 4); }
+    if (dxW > 15 && pW > 20) {
+      cx.fillStyle = COL_P; cx.fillText('x·Δx', offX + pW + dxW/2, offY + pW/2 + 4);
+      cx.fillStyle = COL_Q; cx.fillText('x·Δx', offX + pW/2, offY + pW + dxW/2 + 4);
+    }
+    if (!dxSmall && dxW > 15) { cx.font = '10px monospace'; cx.fillStyle = COL_DX2; cx.fillText('Δx²', offX + pW + dxW/2, offY + pW + dxW/2 + 4); }
+
+    // Side labels
+    cx.font = '12px monospace'; cx.textAlign = 'right';
+    cx.fillStyle = COL_CURVE; cx.fillText('x=' + p.toFixed(1), offX - 6, offY + pW/2 + 4);
+    cx.fillStyle = COL_DX; cx.fillText('Δx=' + dxVal.toFixed(1), offX - 6, offY + pW + dxW/2 + 4);
+    cx.textAlign = 'center';
+    cx.fillStyle = COL_CURVE; cx.fillText('x=' + p.toFixed(1), offX + pW/2, offY - 8);
+    cx.fillStyle = COL_DX; cx.fillText('Δx=' + dxVal.toFixed(1), offX + pW + dxW/2, offY - 8);
+
+    return { offX, offY, pW, dxW };
+  }
+
+  // ── Stages ───────────────────────────────────────────────────
+  const stages = [
+    {
+      title: () => T('Ile zyskasz z kolejnej złotówki?', 'How much does the next zloty earn?'),
+      desc: () => T(
+        'Wyobraź sobie, że inwestujesz x złotych i zysk wynosi x² zł. Przy x=3 zysk to 9 zł. Przy x=4 to 16 zł — różnica 7 zł. Ale przy x=10→11 różnica to aż 21 zł! Ile dokładnie daje JEDNA dodatkowa złotówka? To właśnie pytanie o pochodną.',
+        'Imagine investing x zlotys with profit x² zł. At x=3, profit is 9. At x=4, it\'s 16 — a gain of 7. But at x=10→11, the gain is 21! How much exactly does ONE extra zloty give? That\'s the derivative question.'
+      ),
+      sliders: [
+        { id: 'x0', lbl: 'x', color: COL_CURVE, min: 1, max: 6, step: 0.5, val: 3 },
+      ],
+      draw() {
+        const v = makeGV();
+        v.drawGrid({ color: 'rgba(255,255,255,0.04)' }); v.drawAxes({ color: 'rgba(255,255,255,0.2)', lineWidth: 1, arrows: false });
+        v.plotFn(x => x * x, { color: COL_PQ, alpha: 0.6 });
+
+        const y0 = x0 * x0;
+        const y1 = (x0 + 1) * (x0 + 1);
+        const gain = y1 - y0;
+
+        // Mark the two points
+        v.dot(x0, y0, { radius: 5, color: COL_CURVE });
+        v.dot(x0 + 1, y1, { radius: 5, color: COL_DX });
+
+        // Vertical gain
+        v.segment(x0 + 1, y0, x0 + 1, y1, { color: COL_DX + '80', lineWidth: 2, dash: [4, 4] });
+        v.segment(x0, y0, x0 + 1, y0, { color: 'rgba(255,255,255,0.15)', lineWidth: 1 });
+
+        // Labels
+        cx.font = '12px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = COL_CURVE;
+        cx.fillText('f(' + x0.toFixed(0) + ') = ' + y0.toFixed(0), v.px(x0) + 10, v.py(y0));
+        cx.fillStyle = COL_DX;
+        cx.fillText('f(' + (x0+1).toFixed(0) + ') = ' + y1.toFixed(0), v.px(x0 + 1) + 10, v.py(y1));
+        cx.fillStyle = '#fff';
+        cx.fillText(T('zysk', 'gain') + ': +' + gain.toFixed(0) + T(' zł', ''), v.px(x0 + 1) + 10, v.py((y0 + y1) / 2));
+      }
+    },
+    {
+      title: () => T('Prostokąt: (x + Δx)² = x² + 2x·Δx + Δx²', 'Rectangle: (x + Δx)² = x² + 2x·Δx + Δx²'),
+      desc: () => T(
+        'Zwiększamy x o kawałek Δx. Nowy zysk to (x + Δx)². Narysuj to jako kwadrat o boku (x + Δx). Składa się z czterech części: stary zysk x², dwa paski x·Δx i mały kwadracik Δx². Zmiana zysku = 2x·Δx + Δx².',
+        'Increase x by a step Δx. New profit is (x + Δx)². Draw it as a square with side (x + Δx). Four parts: old profit x², two strips x·Δx, and a small square Δx². Change = 2x·Δx + Δx².'
+      ),
+      sliders: [
+        { id: 'x0', lbl: 'x', color: COL_CURVE, min: 1, max: 5, step: 0.5, val: 3 },
+        { id: 'dx', lbl: 'Δx', color: COL_DX, min: 0.2, max: 3, step: 0.1, val: 2 },
+      ],
+      draw() {
+        drawRect(x0, dx);
+        const change = 2 * x0 * dx + dx * dx;
+        cx.font = '12px monospace'; cx.textAlign = 'center'; cx.fillStyle = 'rgba(255,255,255,0.6)';
+        cx.fillText(T('zmiana zysku', 'profit change') + ' = 2·' + x0.toFixed(1) + '·' + dx.toFixed(1) + ' + ' + dx.toFixed(1) + '² = ' + change.toFixed(1), W/2, H - 12);
+      }
+    },
+    {
+      title: () => T('Zysk na złotówkę: dzielimy przez Δx', 'Profit per zloty: divide by Δx'),
+      desc: () => T(
+        'Dzielimy zmianę pola przez Δx, żeby uzyskać tempo wzrostu. Dwa duże paski (x·Δx + x·Δx) dają liniowe tempo 2x. A narożnik Δx²? Jest proporcjonalny do (Δx)² — gdy Δx maleje, znika jeszcze szybciej. Dlatego w granicy zostaje 2x.',
+        'Divide the area change by Δx to get the rate of growth. The two big strips (x·Δx + x·Δx) give a linear rate of 2x. The corner Δx²? It\u2019s proportional to (Δx)\u00B2 — when Δx shrinks, it vanishes even faster. So in the limit, only 2x survives.'
+      ),
+      sliders: [
+        { id: 'x0', lbl: 'x', color: COL_CURVE, min: 1, max: 5, step: 0.5, val: 3 },
+        { id: 'dx', lbl: 'Δx', color: COL_DX, min: 0.05, max: 3, step: 0.05, val: 2 },
+      ],
+      draw() {
+        const { offX, offY, pW, dxW } = drawRect(x0, dx);
+
+        const perUnit = 2 * x0 + dx;
+        const exact = 2 * x0;
+
+        // Show the division
+        cx.font = '14px monospace'; cx.textAlign = 'center';
+        cx.fillStyle = 'rgba(255,255,255,0.7)';
+        cx.fillText(T('zmiana/Δx', 'change/Δx') + ' = 2x + Δx = ' + perUnit.toFixed(2), W/2, H - 30);
+
+        // Highlight the vanishing Δx
+        if (dx < 0.3) {
+          cx.fillStyle = COL_PQ;
+          cx.fillText('→ 2x = ' + exact.toFixed(1) + '  ✓', W/2, H - 10);
+        } else {
+          cx.fillStyle = COL_DX2 + '88';
+          cx.font = '11px monospace';
+          cx.fillText(T('zmniejsz Δx — ten kawałek znika ↓', 'shrink Δx — this piece vanishes ↓'), W/2, H - 10);
+        }
+      }
+    },
+    {
+      title: () => T('Zbliżamy się do punktu', 'Zooming in to the point'),
+      desc: () => T(
+        'Daleko od punktu krzywa może robić co chce — nie możemy zakładać, że trend się utrzyma. Dlatego patrzymy coraz bliżej. Im mniejsze Δx, tym lepsza odpowiedź. Dla x² przy x=3: zmiana/Δx dąży do 6, czyli pochodna = 2·3 = 6. Każda kolejna złotówka daje ~6 zł zysku.',
+        'Far from the point, the curve could do anything — we can\'t assume the trend holds. So we zoom in closer. The smaller Δx, the better the answer. For x² at x=3: change/Δx approaches 6, so derivative = 2·3 = 6.'
+      ),
+      sliders: [
+        { id: 'x0', lbl: 'x', color: COL_CURVE, min: 1, max: 5, step: 0.5, val: 3 },
+        { id: 'dx', lbl: 'Δx', color: COL_DX, min: 0.01, max: 3, step: 0.01, val: 1.5 },
+      ],
+      draw() {
+        const v = makeGV();
+        v.drawGrid({ color: 'rgba(255,255,255,0.04)' }); v.drawAxes({ color: 'rgba(255,255,255,0.2)', lineWidth: 1, arrows: false });
+        const prod = x => x * x;
+        v.plotFn(prod, { color: COL_PQ, alpha: 0.5 });
+
+        const y0 = prod(x0);
+        const y1 = prod(x0 + dx);
+        const secantSlope = (y1 - y0) / dx;
+        const trueSlope = 2 * x0;
+
+        // Secant line
+        const secant = x => y0 + secantSlope * (x - x0);
+        v.plotFn(secant, { color: COL_DX, alpha: 0.6, dash: [6, 4] });
+
+        // Tangent line (true derivative)
+        const tangent = x => y0 + trueSlope * (x - x0);
+        v.plotFn(tangent, { color: COL_PQ, alpha: 0.4, dash: [3, 3] });
+
+        v.dot(x0, y0, { radius: 5, color: COL_CURVE });
+        v.dot(x0 + dx, y1, { radius: 4, color: COL_DX });
+
+        // Info
+        cx.font = '12px monospace'; cx.textAlign = 'left';
+        const infoX = 14, infoY = 22;
+        cx.fillStyle = COL_DX;
+        cx.fillText(T('sieczna', 'secant') + ': ' + secantSlope.toFixed(2), infoX, infoY);
+        cx.fillStyle = COL_PQ;
+        cx.fillText(T('styczna (pochodna)', 'tangent (derivative)') + ': ' + trueSlope.toFixed(1), infoX, infoY + 16);
+        cx.fillStyle = 'rgba(255,255,255,0.5)';
+        cx.fillText(T('r\u00F3\u017Cnica', 'difference') + ': ' + Math.abs(secantSlope - trueSlope).toFixed(2), infoX, infoY + 32);
+
+        if (dx < 0.1) {
+          cx.fillStyle = COL_PQ; cx.font = '13px monospace';
+          cx.fillText(T('\u0394x \u2192 0: sieczna \u2248 styczna \u2713', '\u0394x \u2192 0: secant \u2248 tangent \u2713'), infoX, infoY + 52);
+        }
+      }
+    },
+    {
+      title: () => T('Granica — formalna definicja pochodnej', 'The limit — formal definition'),
+      desc: () => T(
+        'To, co właśnie zrobiliśmy, to granica: f\'(x) = lim [f(x+Δx) − f(x)] / Δx, gdy Δx→0. Dla f(x)=x²: [x²+2xΔx+Δx²−x²]/Δx = 2x+Δx → 2x. Wynik nie zależy od Δx — to jest pochodna. Każdy kolejny grosz zainwestowany przy x daje ~2x groszy zysku.',
+        'What we just did is a limit: f\'(x) = lim [f(x+Δx) − f(x)] / Δx as Δx→0. For f(x)=x²: [x²+2xΔx+Δx²−x²]/Δx = 2x+Δx → 2x. The Δx vanishes — that\'s the derivative.'
+      ),
+      sliders: [
+        { id: 'x0', lbl: 'x', color: COL_CURVE, min: -3, max: 5, step: 0.5, val: 3 },
+      ],
+      draw() {
+        const v = makeGV();
+        v.drawGrid({ color: 'rgba(255,255,255,0.04)' }); v.drawAxes({ color: 'rgba(255,255,255,0.2)', lineWidth: 1, arrows: false });
+        v.plotFn(x => x * x, { color: COL_PQ, alpha: 0.5 });
+
+        const slope = 2 * x0;
+        const y0 = x0 * x0;
+        const tangent = x => y0 + slope * (x - x0);
+        v.plotFn(tangent, { color: COL_DX, alpha: 0.7, dash: [6, 4] });
+
+        v.dot(x0, y0, { radius: 6, color: COL_PQ });
+
+        // Formula
+        cx.font = '14px monospace'; cx.textAlign = 'center'; cx.fillStyle = COL_CURVE;
+        cx.fillText("f'(x) = lim  [f(x+\u0394x) \u2212 f(x)] / \u0394x", W/2, 22);
+        cx.font = '10px monospace'; cx.fillStyle = 'rgba(255,255,255,0.35)';
+        cx.fillText('\u0394x\u21920', W/2 - 60, 34);
+
+        cx.font = '16px monospace'; cx.fillStyle = COL_PQ;
+        cx.fillText("f'(" + x0.toFixed(0) + ") = 2\u00B7" + x0.toFixed(0) + " = " + slope.toFixed(0), W/2, H - 16);
+
+        // Link
+        const el = document.getElementById('limit-link');
+        if (el) el.style.display = 'inline-block';
+      }
+    },
+  ];
+
+  // ── Slider management ────────────────────────────────────────
+  const slWrap = document.getElementById('sliders-wrap');
+
+  function buildSliders(defs) {
+    let html = '<div class="sliders">';
+    defs.forEach(s => {
+      html += `<div class="slider-row">
+        <span class="lbl" style="color:${s.color}">${s.lbl} =</span>
+        <input type="range" id="s_${s.id}" min="${s.min}" max="${s.max}" step="${s.step}" value="${s.val}">
+        <span class="val" id="v_${s.id}" style="color:${s.color}"></span>
+      </div>`;
+    });
+    html += '</div>';
+    if (stage === stages.length - 1) {
+      html += `<a id="limit-link" class="link-btn" href="../derivative/derivative-explorer.html${window.location.search}" style="display:none;">
+        ${T('Eksplorator pochodnej — więcej przykładów →', 'Derivative explorer — more examples →')}
+      </a>`;
+      html += `<a class="link-btn" href="product-rule-general.html${window.location.search}" style="margin-left:6px;">
+        ${T('🧩 Dla ciekawych: ogólna reguła iloczynu →', '🧩 For curious minds: general product rule →')}
+      </a>`;
+    }
+    slWrap.innerHTML = html;
+
+    defs.forEach(s => {
+      const el = document.getElementById('s_' + s.id);
+      document.getElementById('v_' + s.id).textContent = (+el.value).toFixed(s.step < 1 ? (s.step < 0.1 ? 2 : 1) : 0);
+      el.addEventListener('input', function() {
+        const v = +this.value;
+        document.getElementById('v_' + s.id).textContent = v.toFixed(s.step < 1 ? (s.step < 0.1 ? 2 : 1) : 0);
+        if (s.id === 'x0') x0 = v;
+        if (s.id === 'dx') dx = v;
+      });
+    });
+  }
+
+  // ── Navigation ───────────────────────────────────────────────
+  const prevBtn = document.getElementById('qprev');
+  const nextBtn = document.getElementById('qnext');
+  const dotsEl  = document.getElementById('qdots');
+  const titleEl = document.getElementById('qf');
+  const descEl  = document.getElementById('qd');
+
+  function goTo(idx) {
+    stage = Math.max(0, Math.min(stages.length - 1, idx));
+    const s = stages[stage];
+    titleEl.textContent = s.title();
+    descEl.textContent = s.desc();
+    if (s.sliders) {
+      s.sliders.forEach(sl => {
+        if (sl.id === 'x0') sl.val = x0;
+        if (sl.id === 'dx') sl.val = dx;
+      });
+      buildSliders(s.sliders);
+    } else { slWrap.innerHTML = ''; }
+    prevBtn.disabled = stage === 0;
+    nextBtn.disabled = stage === stages.length - 1;
+    renderDots();
+  }
+
+  function renderDots() {
+    dotsEl.innerHTML = stages.map((_, i) =>
+      `<span class="dot${i === stage ? ' active' : ''}" data-i="${i}"></span>`
+    ).join('');
+    dotsEl.querySelectorAll('.dot').forEach(d =>
+      d.addEventListener('click', () => goTo(+d.dataset.i))
+    );
+  }
+
+  prevBtn.addEventListener('click', () => goTo(stage - 1));
+  nextBtn.addEventListener('click', () => goTo(stage + 1));
+
+  function tick() { clear(); stages[stage].draw(); requestAnimationFrame(tick); }
+  goTo(0);
+  tick();
+})();
+</script>
+</body>
+</html>

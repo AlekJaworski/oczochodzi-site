@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Złożenia funkcji</title>
+</head>
+<body>
+<script type="module">
+import { VizCore, T, COLORS } from '../lib/viz-core.js';
+import { GraphView } from '../lib/graph-core.js';
+
+function gv(cx, W, H) {
+  return new GraphView(cx, { xRange: [-4.5, 4.5], yRange: [-3, 6], rect: [0, 0, W, H] });
+}
+
+const { cx, W, H } = VizCore.init({
+  title: T('Złożenia funkcji', 'Function Compositions'),
+  H: 360,
+  stages: [
+    // ── Stage 0: Reading f(g(x)) off the graph — the y=x trick ───
+    {
+      title: () => T('f(g(x)) z wykresu — sztuczka z prostą y = x', 'f(g(x)) from the graph — the y = x trick'),
+      desc:  () => T(
+        'Wartość f(g(x)) odczytasz z wykresów g i f bez liczenia. Z x na osi: ① pionowo do g — to wysokość g(x); ② poziomo do prostej y = x — ta przerzuca wartość z osi y na oś x; ③ pionowo na oś x — stoimy w punkcie g(x); ④ pionowo do f — wysokość, jaką osiągniesz, to f(g(x)).',
+        'You can read f(g(x)) off the graphs of g and f without computing. From x on the axis: ① vertically up to g — that height is g(x); ② horizontally to the line y = x — this transfers the value from the y-axis to the x-axis; ③ vertically to the x-axis — we now stand at g(x); ④ vertically up to f — the height you reach is f(g(x)).'
+      ),
+      sliders: [
+        { id: 'x', lbl: 'x', color: COLORS.YELLOW, min: -1.5, max: 0.5, step: 0.05, val: 0.5 },
+      ],
+      draw(cx, W, H, vals) {
+        const x = vals.x;
+        const g = t => 2 * t + 1;      // g(x) = 2x+1
+        const f = t => t * t;           // f(x) = x²
+
+        const v = gv(cx, W, H);
+        v.drawGrid(); v.drawAxes();
+
+        // y = x line (faint dashed)
+        v.line(-3, -3, 6, 6, { color: 'rgba(255,255,255,0.3)', lineWidth: 1, dash: [4,4] });
+
+        // Plot g (orange) and f (pink) — both source curves
+        v.plotFn(g, { color: COLORS.ORANGE, lineWidth: 2, glow: 4 });
+        v.plotFn(f, { color: COLORS.PINK,   lineWidth: 2, glow: 4 });
+
+        const gx  = g(x);
+        const fgx = f(gx);
+
+        // ① vertical from (x, 0) to (x, g(x)) — meeting g
+        v.segment(x, 0, x, gx, { color: COLORS.ORANGE, lineWidth: 1.5, dash: [3,3] });
+        // ② horizontal from (x, g(x)) to (g(x), g(x)) — meeting y=x
+        v.segment(x, gx, gx, gx, { color: COLORS.GREEN, lineWidth: 1.5, dash: [3,3] });
+        // ③ vertical from (g(x), g(x)) to (g(x), 0) — onto x-axis
+        v.segment(gx, gx, gx, 0, { color: COLORS.GREEN, lineWidth: 1.5, dash: [2,3] });
+        // ④ vertical from (g(x), 0) to (g(x), f(g(x))) — meeting f
+        v.segment(gx, 0, gx, fgx, { color: COLORS.CYAN, lineWidth: 2, dash: [3,3] });
+
+        // Waypoint dots (drawn after segments so they sit on top)
+        v.dot(x,   0,   { radius: 4, color: COLORS.YELLOW });
+        v.dot(x,   gx,  { radius: 5, color: COLORS.ORANGE });
+        v.dot(gx,  gx,  { radius: 4, color: COLORS.GREEN });
+        v.dot(gx,  0,   { radius: 4, color: COLORS.YELLOW });
+        v.dot(gx,  fgx, { radius: 6, color: COLORS.CYAN });
+
+        // Curve labels (top-left)
+        cx.font = '12px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = COLORS.ORANGE; cx.fillText('g(x) = 2x + 1', 14, 22);
+        cx.fillStyle = COLORS.PINK;   cx.fillText('f(x) = x²',     14, 40);
+        cx.fillStyle = 'rgba(255,255,255,0.55)'; cx.fillText('y = x',        14, 58);
+
+        // Live values (top-right)
+        const CX2 = W - 140, CY2 = 22;
+        cx.fillStyle = COLORS.YELLOW; cx.fillText('x = '       + x.toFixed(2),   CX2, CY2);
+        cx.fillStyle = COLORS.ORANGE; cx.fillText('g(x) = '    + gx.toFixed(2),  CX2, CY2 + 18);
+        cx.fillStyle = COLORS.CYAN;   cx.fillText('f(g(x)) = ' + fgx.toFixed(2), CX2, CY2 + 36);
+      },
+    },
+
+    // ── Stage 1: Build the formula step by step ───────────────────
+    {
+      title: () => T('Budowanie wzoru f(g(x))', 'Building the formula f(g(x))'),
+      desc:  () => T(
+        'f(x) = x²,  g(x) = 2x+1. Aby obliczyć f(g(x)): wstawiamy g(x) w miejsce x w f. Czyli f(g(x)) = (g(x))² = (2x+1)².',
+        'f(x) = x²,  g(x) = 2x+1. To compute f(g(x)): substitute g(x) in place of x in f. So f(g(x)) = (g(x))² = (2x+1)².'
+      ),
+      sliders: [
+        { id: 'step', lbl: 'krok', color: COLORS.CYAN, min: 0, max: 4, step: 1, val: 0, stepper: true },
+      ],
+      draw(cx, W, H, vals) {
+        const step = Math.round(vals.step);
+        const steps = [
+          { label: 'f(x) = x²',          col: COLORS.CYAN },
+          { label: 'g(x) = 2x + 1',       col: COLORS.ORANGE },
+          { label: 'f(g(x)) = f(2x+1)',   col: COLORS.GREEN },
+          { label: '= (2x+1)²',           col: COLORS.YELLOW },
+          { label: '= 4x² + 4x + 1',      col: COLORS.PURPLE },
+        ];
+        const lineH = 52, startY = 50;
+        steps.forEach((s, i) => {
+          const y = startY + i * lineH;
+          const active = i === step;
+          const future = i > step;
+          cx.globalAlpha = future ? 0.2 : 1;
+          if (active) {
+            cx.fillStyle = 'rgba(88,196,221,0.1)';
+            cx.beginPath(); cx.roundRect(20, y - 26, W - 40, 40, 6); cx.fill();
+          }
+          cx.font = active ? 'bold 16px monospace' : '15px monospace';
+          cx.textAlign = 'center';
+          cx.fillStyle = active ? s.col : 'rgba(255,255,255,0.45)';
+          cx.fillText(s.label, W / 2, y);
+          if (active && i === 2) {
+            // arrow showing substitution
+            cx.font = '12px monospace'; cx.fillStyle = COLORS.ORANGE;
+            cx.fillText('← wstawiamy g(x)', W / 2 + 90, y + 16);
+          }
+          cx.globalAlpha = 1;
+        });
+      },
+    },
+
+    // ── Stage 2: g(f(x)) vs f(g(x)) — order matters ──────────────
+    {
+      title: () => T('Kolejność ma znaczenie: f∘g ≠ g∘f', 'Order matters: f∘g ≠ g∘f'),
+      desc:  () => T(
+        'f(g(x)) i g(f(x)) to zazwyczaj różne funkcje. f(x)=x², g(x)=2x+1: f(g(x))=(2x+1)², g(f(x))=2x²+1.',
+        'f(g(x)) and g(f(x)) are usually different functions. f(x)=x², g(x)=2x+1: f(g(x))=(2x+1)², g(f(x))=2x²+1.'
+      ),
+      sliders: [
+        { id: 'x', lbl: 'x', color: COLORS.YELLOW, min: -2.5, max: 2.5, step: 0.1, val: 1 },
+      ],
+      draw(cx, W, H, vals) {
+        const x = vals.x;
+        const g = t => 2 * t + 1;
+        const f = t => t * t;
+        const fg = t => f(g(t));   // (2x+1)²
+        const gf = t => g(f(t));   // 2x²+1
+
+        const v = gv(cx, W, H);
+        v.drawGrid(); v.drawAxes();
+        v.plotFn(fg, { color: COLORS.CYAN, lineWidth: 2.5, glow: 4 });
+        v.plotFn(gf, { color: COLORS.PINK, lineWidth: 2.5, glow: 4 });
+
+        const fgx = fg(x), gfx = gf(x);
+        if (fgx <= 6 && fgx >= -4) v.dot(x, fgx, { radius: 6, color: COLORS.CYAN });
+        if (gfx <= 6 && gfx >= -4) v.dot(x, gfx, { radius: 6, color: COLORS.PINK });
+
+        cx.font = '12px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = COLORS.CYAN;
+        cx.fillText('f∘g: (2x+1)²', 14, 22);
+        cx.fillText('f(g(' + x.toFixed(1) + ')) = ' + Math.round(fgx * 100) / 100, 14, 40);
+        cx.fillStyle = COLORS.PINK;
+        cx.fillText('g∘f: 2x²+1', 14, 62);
+        cx.fillText('g(f(' + x.toFixed(1) + ')) = ' + Math.round(gfx * 100) / 100, 14, 80);
+        cx.fillStyle = COLORS.YELLOW;
+        cx.fillText('≠  (różne!)', 14, 100);
+      },
+    },
+
+    // ── Stage 3: Inverse functions ───────────────────────────────
+    {
+      title: () => T('Funkcja odwrotna — złożenie z powrotem do x', 'Inverse function — composition back to x'),
+      desc:  () => T(
+        'Jeśli g = f⁻¹, to f(g(x)) = x i g(f(x)) = x. Przykład: f(x)=2x, f⁻¹(x)=x/2. Złożenie daje identyczność.',
+        'If g = f⁻¹, then f(g(x)) = x and g(f(x)) = x. Example: f(x)=2x, f⁻¹(x)=x/2. Composition gives identity.'
+      ),
+      sliders: [
+        { id: 'x', lbl: 'x', color: COLORS.YELLOW, min: -3, max: 3, step: 0.25, val: 1.5 },
+      ],
+      draw(cx, W, H, vals) {
+        const x = vals.x;
+        const f   = t => 2 * t;
+        const fi  = t => t / 2;
+        const ffi = t => f(fi(t));  // = t
+
+        const v = gv(cx, W, H);
+        v.drawGrid(); v.drawAxes();
+        // y = x (identity)
+        v.line(0, 0, 1, 1, { color: 'rgba(255,255,255,0.15)', lineWidth: 1, dash: [4,4] });
+
+        v.plotFn(f,   { color: COLORS.ORANGE, lineWidth: 2, glow: 4 });
+        v.plotFn(fi,  { color: COLORS.GREEN,  lineWidth: 2, glow: 4 });
+        v.plotFn(ffi, { color: COLORS.CYAN,   lineWidth: 2.5, dash: [5,3], glow: 4 });
+
+        // Trace: x → f → f⁻¹ → x
+        const fx = f(x), ffx = fi(fx);
+        v.dot(x, 0,   { radius: 5, color: COLORS.YELLOW });
+        v.dot(x, fx,  { radius: 5, color: COLORS.ORANGE });
+        v.dot(x, ffx, { radius: 6, color: COLORS.CYAN });
+
+        v.segment(x, 0, x, fx,  { color: COLORS.ORANGE, lineWidth: 1.5, dash: [3,3] });
+        v.segment(x, fx, x, ffx, { color: COLORS.CYAN, lineWidth: 1.5, dash: [3,3] });
+
+        cx.font = '12px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = COLORS.ORANGE; cx.fillText('f(x) = 2x', 14, 22);
+        cx.fillStyle = COLORS.GREEN;  cx.fillText('f⁻¹(x) = x/2', 14, 40);
+        cx.fillStyle = COLORS.CYAN;   cx.fillText('f(f⁻¹(x)) = x  ✓', 14, 58);
+        cx.fillStyle = COLORS.YELLOW;
+        cx.fillText('x = ' + x + ' → 2x = ' + fx + ' → ÷2 = ' + ffx, 14, 80);
+      },
+    },
+  ],
+});
+</script>
+</body>
+</html>

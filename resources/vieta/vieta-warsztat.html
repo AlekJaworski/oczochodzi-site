@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<title>Wzory Viète'a — Warsztat</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e0e12; font-family: monospace; display: flex; justify-content: center; padding: 2rem 1rem; min-height: 100vh; color: rgba(255,255,255,.85); }
+  .wrap { width: 100%; max-width: 640px; }
+  canvas { width: 100%; display: block; border-radius: 10px 10px 0 0; }
+  .panel { background: #16161a; border: 0.5px solid rgba(255,255,255,.1); border-top: 0.5px solid rgba(255,255,255,.07); border-radius: 0 0 10px 10px; padding: .875rem 1.25rem; }
+
+  .head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
+  .head .step { font-size: 11px; color: rgba(255,255,255,.4); letter-spacing: .04em; }
+  .head .title { font-size: 16px; font-weight: 500; color: #58C4DD; letter-spacing: .02em; }
+  .desc { font-size: 13px; line-height: 1.65; color: rgba(255,255,255,.62); margin-bottom: 10px; min-height: 34px; }
+
+  .pips { display: flex; gap: 14px; flex-wrap: wrap; margin: 4px 0 10px; font-size: 12px; }
+  .pip { display: inline-flex; align-items: center; gap: 6px; color: rgba(255,255,255,.55); }
+  .pip .mark { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(255,255,255,.25); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; line-height: 1; }
+  .pip.ok { color: #83C167; }
+  .pip.ok .mark { background: #83C167; border-color: #83C167; color: #0e0e12; }
+  .pip.ok .mark::before { content: "\2713"; }
+
+  .predict { margin-bottom: 10px; }
+  .predict .q { font-size: 13px; color: rgba(255,255,255,.82); margin-bottom: 8px; line-height: 1.55; }
+  .predict .opts { display: flex; flex-direction: column; gap: 6px; }
+  .predict button { background: transparent; border: 0.5px solid rgba(255,255,255,.25); color: rgba(255,255,255,.78); padding: 8px 12px; font-size: 13px; border-radius: 6px; cursor: pointer; font-family: monospace; text-align: left; transition: background .15s, border-color .15s; }
+  .predict button:hover { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.4); }
+  .predict button.picked { border-color: #58C4DD; color: #58C4DD; }
+  .predict .feedback { margin-top: 8px; font-size: 12px; line-height: 1.55; color: rgba(255,255,255,.7); padding: 8px 10px; border-left: 2px solid #58C4DD; background: rgba(88,196,221,.06); border-radius: 0 4px 4px 0; }
+
+  .sliders { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .slider-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,.45); }
+  .slider-row span.lbl { font-family: monospace; min-width: 36px; }
+  .slider-row input[type=range] { flex: 1; accent-color: #58C4DD; }
+  .slider-row span.val { font-family: monospace; min-width: 46px; text-align: right; }
+
+  .hints { font-size: 12px; color: rgba(255,255,255,.5); margin: 4px 0 10px; line-height: 1.55; }
+  .hints .hint { padding: 6px 10px; border-left: 2px solid #FFD166; background: rgba(255,209,102,.05); margin-top: 4px; border-radius: 0 4px 4px 0; }
+
+  .nav { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+  .nav button { background: transparent; border: 0.5px solid rgba(255,255,255,.25); color: rgba(255,255,255,.7); padding: 5px 14px; font-size: 13px; border-radius: 6px; cursor: pointer; font-family: monospace; transition: background .15s; }
+  .nav button:hover:not(:disabled) { background: rgba(255,255,255,.08); }
+  .nav button:disabled { opacity: .3; cursor: default; }
+  .nav button.primary { border-color: #83C167; color: #83C167; }
+  .nav button.primary:hover { background: rgba(131,193,103,.1); }
+
+  .dots { display: flex; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; cursor: pointer; background: rgba(255,255,255,.15); transition: background .2s; }
+  .dot.active { background: #58C4DD; }
+  .dot.done { background: #83C167; }
+
+  .solved-note { font-size: 13px; color: #83C167; line-height: 1.55; padding: 8px 10px; border-left: 2px solid #83C167; background: rgba(131,193,103,.06); border-radius: 0 4px 4px 0; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="cv" width="600" height="310"></canvas>
+  <div class="panel">
+    <div class="head">
+      <span class="step" id="step"></span>
+      <div class="dots" id="dots"></div>
+    </div>
+    <p class="title" id="title"></p>
+    <p class="desc" id="desc"></p>
+    <div id="predict"></div>
+    <div id="sliders-wrap"></div>
+    <div class="pips" id="pips"></div>
+    <div class="hints" id="hints"></div>
+    <div id="solved-msg"></div>
+    <div class="nav">
+      <button id="prev">&larr;</button>
+      <button id="next" class="primary">Dalej &rarr;</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { GraphView } from '../lib/graph-core.js';
+import { initWarsztat, T } from '../lib/warsztat-core.js';
+{
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  const W = 600, H = 310;
+
+  // ── Colors (match explorer) ─────────────────────────────────
+  const COL_PAR = '#58C4DD';
+  const COL_R1  = '#FF6B6B';
+  const COL_R2  = '#4ECDC4';
+  const COL_SUM = '#FFD166';
+  const COL_PRD = '#C78DFF';
+  const COL_SYM = '#FF9F43';
+  const COL_OK  = '#83C167';
+  const COL_A   = '#E07090';
+
+  // ── GraphView (rebuilt each frame so that `view` closures below work) ─
+  let view;
+  function initView() {
+    view = new GraphView(ctx, { rect: [0,0,W,H], xRange: [-6,6], yRange: [-3.19,3.81], scale: 50 });
+  }
+
+  // ── Draw helpers ────────────────────────────────────────────
+  function plotParabola(a, b, c, color, alpha, lw) {
+    view.plotFn(x => a*x*x + b*x + c, { color, alpha: alpha ?? 0.85, lineWidth: lw ?? 2.5 });
+  }
+  function dot(x, y, r, col) { view.dot(x, y, { radius: r, color: col }); }
+  function dashed(x1, y1, x2, y2, col, alpha) {
+    view.segment(x1, y1, x2, y2, { color: col, alpha: alpha ?? 0.6, lineWidth: 1.5, dash: [5,4] });
+  }
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x+r,y); c.lineTo(x+w-r,y); c.quadraticCurveTo(x+w,y,x+w,y+r);
+    c.lineTo(x+w,y+h-r); c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+    c.lineTo(x+r,y+h); c.quadraticCurveTo(x,y+h,x,y+h-r);
+    c.lineTo(x,y+r); c.quadraticCurveTo(x,y,x+r,y);
+    c.closePath();
+  }
+  function infoBox(text, sx, sy, col, alpha) {
+    ctx.save();
+    ctx.font = '12px monospace';
+    if (alpha !== undefined) ctx.globalAlpha = alpha;
+    const w = ctx.measureText(text).width + 14;
+    ctx.fillStyle = 'rgba(14,14,18,0.9)';
+    ctx.strokeStyle = col + '60';
+    ctx.lineWidth = 1;
+    roundRect(ctx, sx - w/2, sy - 11, w, 22, 4);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = col;
+    ctx.textAlign = 'center';
+    ctx.fillText(text, sx, sy + 4);
+    ctx.restore();
+  }
+  function fmt(v) {
+    if (Math.abs(v - Math.round(v)) < 0.01) return Math.round(v).toString();
+    return v.toFixed(2);
+  }
+  function buildEq(a, b, c) {
+    let parts = [];
+    if (a === 1) parts.push('x²');
+    else if (a === -1) parts.push('-x²');
+    else parts.push(fmt(a) + 'x²');
+    if (b !== 0) {
+      const ab = Math.abs(b);
+      parts.push((b > 0 ? ' + ' : ' − ') + (ab === 1 ? '' : fmt(ab)) + 'x');
+    }
+    if (c !== 0) {
+      const ac = Math.abs(c);
+      parts.push((c > 0 ? ' + ' : ' − ') + fmt(ac));
+    }
+    return parts.join('');
+  }
+  const near = (a, b, eps = 0.02) => Math.abs(a - b) < eps;
+  function px(x) { return view.px(x); }
+  function py(y) { return view.py(y); }
+
+  // ── Challenge-local state ───────────────────────────────────
+  const C = { r1: 0, r2: 0, a: 1, aTested: new Set() };
+
+  // ── Challenges ──────────────────────────────────────────────
+  const challenges = [
+    // ─── Ch.1: Shift axis of symmetry ─────────────────────────
+    {
+      id: 'ch1',
+      title:   'Przesuń oś symetrii do x = 2',
+      titleEn: 'Shift the axis of symmetry to x = 2',
+      desc:    'Pierwszy pierwiastek jest ustalony: r₁ = 1. Przesuwaj drugi tak, by oś symetrii paraboli wylądowała w x = 2.',
+      descEn:  'The first root is fixed: r₁ = 1. Slide the second so the parabola’s axis of symmetry lands at x = 2.',
+      drawBackground: 'graph',
+      init() { C.r1 = 1; C.r2 = -1; },
+      predict: {
+        question:   'Zanim przesuniesz suwak — zgadnij. Dla r₁ = 1, gdzie musi być r₂, żeby oś symetrii była w x = 2?',
+        questionEn: 'Before moving the slider — guess. For r₁ = 1, where must r₂ be so the axis of symmetry is at x = 2?',
+        options: [
+          { label: 'r₂ = 2', correct: false,
+            why:   'Sprawdźmy: (1+2)/2 = 1.5 — to trochę za mało. Oś symetrii to średnia pierwiastków.',
+            whyEn: 'Check: (1+2)/2 = 1.5 — a touch too low. The axis of symmetry is the mean of the roots.' },
+          { label: 'r₂ = 3', correct: true,
+            why:   'Tak — (1+3)/2 = 2. Oś symetrii to średnia pierwiastków, więc suma = 2·(oś) = 4.',
+            whyEn: 'Yes — (1+3)/2 = 2. The axis is the mean of the roots, so the sum = 2·(axis) = 4.' },
+          { label: 'r₂ = 4', correct: false,
+            why:   'Blisko, ale (1+4)/2 = 2.5 — o pół za dużo. Oś symetrii to średnia pierwiastków.',
+            whyEn: 'Close, but (1+4)/2 = 2.5 — half too far. The axis of symmetry is the mean of the roots.' },
+        ],
+      },
+      sliders: [
+        { id: 'r2', lbl: 'r₂', color: COL_R2, min: -4, max: 4, step: 0.5, get: () => C.r2, set: v => C.r2 = v },
+      ],
+      pips() {
+        const axis = (C.r1 + C.r2) / 2;
+        return [{ label: T('oś symetrii w x = 2', 'axis of symmetry at x = 2'), ok: near(axis, 2) }];
+      },
+      solved() { return near((C.r1 + C.r2) / 2, 2); },
+      hints: [
+        'Oś symetrii to średnia dwóch pierwiastków: x = (r₁ + r₂) / 2.',
+        'Masz r₁ = 1. Chcesz (1 + r₂) / 2 = 2, więc 1 + r₂ = 4.',
+        'Rozwiąż: r₂ = 3.',
+      ],
+      hintsEn: [
+        'The axis of symmetry is the mean of the two roots: x = (r₁ + r₂) / 2.',
+        'You have r₁ = 1. You want (1 + r₂) / 2 = 2, so 1 + r₂ = 4.',
+        'Solve: r₂ = 3.',
+      ],
+      solvedMsg:   'Świetnie. Suma pierwiastków decyduje, GDZIE parabola siedzi na osi X.',
+      solvedMsgEn: 'Nicely done. The sum of the roots decides WHERE the parabola sits on the x-axis.',
+      draw() {
+        const s = C.r1 + C.r2, p = C.r1 * C.r2;
+        const mid = s / 2;
+        plotParabola(1, -s, p, COL_PAR, 0.8);
+        dashed(2, -4, 2, 6, COL_OK, 0.45);
+        view.label(T('cel: x=2', 'target: x=2'), 2.15, 3.6, { color: COL_OK, align: 'left', font: '10px monospace' });
+        dashed(mid, -4, mid, 6, COL_SYM, 0.65);
+        view.label(T('oś: x=', 'axis: x=') + fmt(mid), mid + 0.15, 3.2, { color: COL_SYM, align: 'left', font: '10px monospace' });
+        dot(C.r1, 0, 6, COL_R1); dot(C.r2, 0, 6, COL_R2);
+        view.label('r₁=' + fmt(C.r1), C.r1, 0.45, { color: COL_R1, align: 'center', font: '11px monospace' });
+        view.label('r₂=' + fmt(C.r2), C.r2, 0.45, { color: COL_R2, align: 'center', font: '11px monospace' });
+        infoBox('f(x) = ' + buildEq(1, -s, p), W/2, 22, COL_PAR);
+      },
+    },
+
+    // ─── Ch.2: Flip product sign while keeping sum positive ──
+    {
+      id: 'ch2',
+      title:   'Odwróć znak iloczynu — ale zachowaj dodatnią sumę',
+      titleEn: 'Flip the product’s sign — but keep the sum positive',
+      desc:    'Start: oba pierwiastki dodatnie (iloczyn dodatni, suma dodatnia). Przesuń pierwiastki tak, by iloczyn był UJEMNY, a suma dalej DODATNIA.',
+      descEn:  'Start: both roots positive (product positive, sum positive). Move the roots so the product becomes NEGATIVE while the sum stays POSITIVE.',
+      drawBackground: 'graph',
+      init() { C.r1 = 2; C.r2 = 3; },
+      predict: {
+        question:   'Żeby iloczyn był ujemny, a suma dodatnia, pierwiastki muszą być...',
+        questionEn: 'For the product to be negative while the sum is positive, the roots must be...',
+        options: [
+          { label:   'oba dodatnie',
+            labelEn: 'both positive',
+            correct: false,
+            why:   'Sprawdźmy: gdy oba są dodatnie, iloczyn też wyjdzie dodatni — a my chcemy ujemny.',
+            whyEn: 'Check: when both are positive, the product is also positive — but we want it negative.' },
+          { label:   'oba ujemne',
+            labelEn: 'both negative',
+            correct: false,
+            why:   'Tu iloczyn byłby dodatni (minus razy minus), a suma ujemna — oba warunki nie pasują.',
+            whyEn: 'Here the product would be positive (minus times minus), and the sum negative — neither condition holds.' },
+          { label:   'różnych znaków, z dodatnim o większej wartości bezwzględnej',
+            labelEn: 'opposite signs, with the positive one larger in magnitude',
+            correct: true,
+            why:   'Tak. Różne znaki dają ujemny iloczyn; żeby suma była dodatnia, dodatni pierwiastek musi przeważyć.',
+            whyEn: 'Yes. Opposite signs give a negative product; for the sum to be positive, the positive root must dominate.' },
+          { label:   'różnych znaków, z ujemnym o większej wartości bezwzględnej',
+            labelEn: 'opposite signs, with the negative one larger in magnitude',
+            correct: false,
+            why:   'Iloczyn owszem wyjdzie ujemny — ale suma też, bo ujemny ma większą wagę.',
+            whyEn: 'The product will be negative — but so will the sum, since the negative root carries more weight.' },
+        ],
+      },
+      sliders: [
+        { id: 'r1', lbl: 'r₁', color: COL_R1, min: -4, max: 4, step: 0.5, get: () => C.r1, set: v => C.r1 = v },
+        { id: 'r2', lbl: 'r₂', color: COL_R2, min: -4, max: 4, step: 0.5, get: () => C.r2, set: v => C.r2 = v },
+      ],
+      pips() {
+        const s = C.r1 + C.r2, p = C.r1 * C.r2;
+        return [
+          { label: T('suma > 0', 'sum > 0'), ok: s > 0.01 },
+          { label: T('iloczyn < 0', 'product < 0'), ok: p < -0.01 },
+        ];
+      },
+      solved() {
+        const s = C.r1 + C.r2, p = C.r1 * C.r2;
+        return s > 0.01 && p < -0.01;
+      },
+      hints: [
+        'Iloczyn jest ujemny tylko wtedy, gdy pierwiastki mają różne znaki.',
+        'Spróbuj jeden pierwiastek ujemny, drugi dodatni. Żeby suma była dodatnia — dodatni musi być większy co do wartości bezwzględnej.',
+        'Na przykład r₁ = −1, r₂ = 3.',
+      ],
+      hintsEn: [
+        'The product is negative only when the roots have opposite signs.',
+        'Try one negative root and one positive. For the sum to be positive, the positive root must be larger in magnitude.',
+        'For example r₁ = −1, r₂ = 3.',
+      ],
+      solvedMsg:   'Dokładnie tak. Znak iloczynu mówi CI, czy pierwiastki są po tej samej stronie zera. Znak sumy mówi, która strona przeważa.',
+      solvedMsgEn: 'Exactly. The sign of the product tells YOU whether the roots lie on the same side of zero. The sign of the sum tells which side dominates.',
+      draw() {
+        const s = C.r1 + C.r2, p = C.r1 * C.r2;
+        plotParabola(1, -s, p, COL_PAR, 0.8);
+        dot(0, p, 6, COL_PRD);
+        dashed(0, 0, 0, p, COL_PRD, 0.35);
+        infoBox(T('iloczyn = ', 'product = ') + fmt(p), px(0) + 80, py(p), COL_PRD);
+        dot(C.r1, 0, 6, COL_R1); dot(C.r2, 0, 6, COL_R2);
+        view.label('r₁=' + fmt(C.r1), C.r1, 0.45, { color: COL_R1, align: 'center', font: '11px monospace' });
+        view.label('r₂=' + fmt(C.r2), C.r2, 0.45, { color: COL_R2, align: 'center', font: '11px monospace' });
+        infoBox(T('suma = ', 'sum = ') + fmt(s), W*0.3, 22, COL_SUM);
+        infoBox(T('iloczyn = ', 'product = ') + fmt(p), W*0.7, 22, COL_PRD);
+      },
+    },
+
+    // ─── Ch.3: Build f(x) = x² − 5x + 6 ──────────────────────
+    {
+      id: 'ch3',
+      title:   'Zbuduj f(x) = x² − 5x + 6',
+      titleEn: 'Build f(x) = x² − 5x + 6',
+      desc:    'Znajdź pierwiastki, których suma i iloczyn dadzą właśnie te współczynniki. Bez wzoru na deltę, bez kwadratowego rozwiązywania — tylko Viète.',
+      descEn:  'Find roots whose sum and product give exactly these coefficients. No discriminant, no quadratic formula — pure Vieta.',
+      drawBackground: 'graph',
+      init() { C.r1 = 0; C.r2 = 0; },
+      predict: {
+        question:   'Dla x² − 5x + 6 = 0: ile wynoszą suma i iloczyn pierwiastków?',
+        questionEn: 'For x² − 5x + 6 = 0: what are the sum and product of the roots?',
+        options: [
+          { label:   'suma = 5, iloczyn = 6',
+            labelEn: 'sum = 5, product = 6',
+            correct: true,
+            why:   'Tak. Dla a=1: suma = −b, iloczyn = c. Tu b = −5, c = 6, więc suma = 5, iloczyn = 6.',
+            whyEn: 'Yes. For a=1: sum = −b, product = c. Here b = −5, c = 6, so sum = 5, product = 6.' },
+          { label:   'suma = −5, iloczyn = 6',
+            labelEn: 'sum = −5, product = 6',
+            correct: false,
+            why:   'Uwaga na znak: suma = −b, a nie b. Jeśli b = −5, to −b = +5.',
+            whyEn: 'Mind the sign: sum = −b, not b. If b = −5, then −b = +5.' },
+          { label:   'suma = 5, iloczyn = −6',
+            labelEn: 'sum = 5, product = −6',
+            correct: false,
+            why:   'Iloczyn = c (dla a=1), a tu c = +6 — więc dodatni, nie ujemny.',
+            whyEn: 'Product = c (for a=1), and here c = +6 — so positive, not negative.' },
+          { label:   'suma = −5, iloczyn = −6',
+            labelEn: 'sum = −5, product = −6',
+            correct: false,
+            why:   'Warto sprawdzić oba razem: suma = −b = +5, iloczyn = c = +6. Znak daje się łatwo pomylić.',
+            whyEn: 'Worth checking both together: sum = −b = +5, product = c = +6. Easy to slip on the signs.' },
+        ],
+      },
+      sliders: [
+        { id: 'r1', lbl: 'r₁', color: COL_R1, min: -4, max: 4, step: 0.5, get: () => C.r1, set: v => C.r1 = v },
+        { id: 'r2', lbl: 'r₂', color: COL_R2, min: -4, max: 4, step: 0.5, get: () => C.r2, set: v => C.r2 = v },
+      ],
+      pips() {
+        const s = C.r1 + C.r2, p = C.r1 * C.r2;
+        return [
+          { label: T('suma = 5', 'sum = 5'), ok: near(s, 5) },
+          { label: T('iloczyn = 6', 'product = 6'), ok: near(p, 6) },
+        ];
+      },
+      solved() {
+        const s = C.r1 + C.r2, p = C.r1 * C.r2;
+        return near(s, 5) && near(p, 6);
+      },
+      hints: [
+        'Szukasz dwóch liczb, które sumują się do 5 i mnożą do 6.',
+        'Rozłóż 6 na pary: 1·6, 2·3. Która para sumuje się do 5?',
+        '2 + 3 = 5, 2 · 3 = 6. Pierwiastki to 2 i 3.',
+      ],
+      hintsEn: [
+        'You’re looking for two numbers that sum to 5 and multiply to 6.',
+        'Factor 6 into pairs: 1·6, 2·3. Which pair sums to 5?',
+        '2 + 3 = 5, 2 · 3 = 6. The roots are 2 and 3.',
+      ],
+      solvedMsg:   'Bez wzoru kwadratowego i bez liczenia delty — w wielu zadaniach maturalnych to wyraźnie krótsza droga.',
+      solvedMsgEn: 'No quadratic formula, no discriminant — for many matura problems this is the clearly shorter route.',
+      predictAfter: {
+        question:   'Szybki test: zmień $c$ z 6 na 12, $b$ zostaje $-5$. Co się stanie z pierwiastkami?',
+        questionEn: 'Quick check: change $c$ from 6 to 12, leave $b = -5$. What happens to the roots?',
+        options: [
+          { label:   'nadal 2 i 3',
+            labelEn: 'still 2 and 3',
+            correct: false,
+            why:   'Pierwiastki zależą od c — zmiana c = 12 zmienia też iloczyn. Trzeba sprawdzić, czy dwie liczby o sumie 5 i iloczynie 12 w ogóle istnieją.',
+            whyEn: 'The roots depend on c — changing c = 12 changes the product too. We need to check whether two numbers with sum 5 and product 12 even exist.' },
+          { label:   'rzeczywiste, ale inne',
+            labelEn: 'real, but different',
+            correct: false,
+            why:   'Policz deltę: $Δ = 25 - 48 = -23 < 0$. Ujemna delta oznacza, że nie ma rzeczywistych pierwiastków.',
+            whyEn: 'Compute the discriminant: $Δ = 25 - 48 = -23 < 0$. A negative discriminant means no real roots.' },
+          { label:   'nieistniejące (Δ < 0)',
+            labelEn: 'none (Δ < 0)',
+            correct: true,
+            why:   'Tak. Szukasz liczb o sumie 5, iloczynie 12 — ale $5^2/4 = 6{,}25 < 12$, więc takich liczb rzeczywistych nie ma. Formalnie: $Δ = 25 - 48 = -23$.',
+            whyEn: 'Yes. You’d need two numbers with sum 5 and product 12 — but $5^2/4 = 6.25 < 12$, so no such real pair exists. Formally: $Δ = 25 - 48 = -23$.' },
+        ],
+      },
+      draw() {
+        const s = C.r1 + C.r2, p = C.r1 * C.r2;
+        view.plotFn(x => x*x - 5*x + 6, { color: COL_OK, alpha: 0.3, lineWidth: 2, dash: [5,4] });
+        plotParabola(1, -s, p, COL_PAR, 0.8);
+        dot(C.r1, 0, 6, COL_R1); dot(C.r2, 0, 6, COL_R2);
+        view.label('r₁=' + fmt(C.r1), C.r1, 0.45, { color: COL_R1, align: 'center', font: '11px monospace' });
+        view.label('r₂=' + fmt(C.r2), C.r2, 0.45, { color: COL_R2, align: 'center', font: '11px monospace' });
+        infoBox(T('cel: f(x) = x² − 5x + 6', 'target: f(x) = x² − 5x + 6'), W/2, 22, COL_OK);
+        infoBox(T('twoje: f(x) = ', 'yours: f(x) = ') + buildEq(1, -s, p), W/2, H - 20, COL_PAR);
+      },
+    },
+
+    // ─── Ch.5: The many-to-one rupture ───────────────────────
+    {
+      id: 'ch5',
+      title:   'Ile wielomianów ma pierwiastki 1 i 3?',
+      titleEn: 'How many polynomials have roots 1 and 3?',
+      desc:    'Pierwiastki są ustalone: r₁ = 1, r₂ = 3. Tym razem suwak steruje współczynnikiem a. Zbadaj co najmniej dwie różne wartości a ≠ 0.',
+      descEn:  'The roots are fixed: r₁ = 1, r₂ = 3. This time the slider controls the leading coefficient a. Try at least two different non-zero values of a.',
+      drawBackground: 'graph',
+      init() { C.r1 = 1; C.r2 = 3; C.a = 1; C.aTested = new Set(); },
+      predict: {
+        question:   'Przed dotknięciem suwaka — zgadnij. Ile RÓŻNYCH wielomianów (z a ≠ 0) ma pierwiastki dokładnie w 1 i 3?',
+        questionEn: 'Before touching the slider — guess. How many DIFFERENT polynomials (with a ≠ 0) have roots exactly at 1 and 3?',
+        options: [
+          { label:   'dokładnie jeden',
+            labelEn: 'exactly one',
+            correct: false,
+            why:   'Przesuń suwak a — dla każdego a ≠ 0 dostajesz inny wielomian z tymi samymi pierwiastkami 1 i 3.',
+            whyEn: 'Slide a — for any a ≠ 0 you get a different polynomial that still has roots 1 and 3.' },
+          { label:   'nieskończenie wiele',
+            labelEn: 'infinitely many',
+            correct: true,
+            why:   'Tak. f(x) = a·(x−1)(x−3) dla dowolnego a ≠ 0 to osobny wielomian — wszystkie z pierwiastkami 1 i 3. Przesuwaj a i zobacz rodzinę.',
+            whyEn: 'Yes. f(x) = a·(x−1)(x−3) for any a ≠ 0 is a separate polynomial — all sharing roots 1 and 3. Slide a and watch the family.' },
+          { label:   'dokładnie dwa',
+            labelEn: 'exactly two',
+            correct: false,
+            why:   'Jest ich więcej, niż się wydaje. Przesuwając a zobaczysz całą rodzinę — każda wartość a ≠ 0 to osobny wielomian.',
+            whyEn: 'There are more than it looks. Sliding a reveals the whole family — every non-zero a is a different polynomial.' },
+        ],
+      },
+      sliders: [
+        { id: 'a', lbl: 'a', color: COL_A, min: -2, max: 2, step: 0.25, get: () => C.a, set: v => {
+            C.a = v;
+            if (Math.abs(v) > 0.01) C.aTested.add(v.toFixed(2));
+        } },
+      ],
+      pips() {
+        const n = C.aTested.size;
+        return [{ label: T('zbadano wartości a: ', 'values of a tested: ') + Math.min(n, 2) + '/2', ok: n >= 2 }];
+      },
+      solved() { return C.aTested.size >= 2; },
+      hints: [
+        'Każda wartość a daje inny wielomian: f(x) = a·(x−1)(x−3).',
+        'Przesuwaj suwak a. Zauważ: pierwiastki zostają w 1 i 3, ale parabola zmienia rozwarcie i kierunek.',
+        'Spróbuj a = 1 i a = 2 — porównaj kształty.',
+      ],
+      hintsEn: [
+        'Every value of a gives a different polynomial: f(x) = a·(x−1)(x−3).',
+        'Slide a. Notice: the roots stay at 1 and 3, but the parabola changes its width and direction.',
+        'Try a = 1 and a = 2 — compare the shapes.',
+      ],
+      solvedMsg:   'Tu jest sedno. Sama para pierwiastków NIE wyznacza wielomianu — to rodzina nieskończona. Na maturze zawsze dostajesz coś dodatkowego (współczynnik wiodący, wartość w punkcie, wierzchołek), co jednoznacznie wybiera jeden z tych wielomianów.',
+      solvedMsgEn: 'Here’s the heart of it. A pair of roots ALONE does not pin down a polynomial — that’s an infinite family. On the matura you always get something extra (leading coefficient, value at a point, vertex) that singles out one polynomial from the family.',
+      draw() {
+        const family = [-2, -1.5, -1, -0.5, 0.5, 1, 1.5, 2];
+        family.forEach(av => {
+          if (av === C.a) return;
+          const b = -av * (C.r1 + C.r2);
+          const c = av * C.r1 * C.r2;
+          plotParabola(av, b, c, COL_A, 0.15, 1.2);
+        });
+        const b = -C.a * (C.r1 + C.r2);
+        const c = C.a * C.r1 * C.r2;
+        if (Math.abs(C.a) > 0.01) {
+          plotParabola(C.a, b, c, COL_PAR, 0.9, 2.5);
+        }
+        dot(C.r1, 0, 7, COL_R1); dot(C.r2, 0, 7, COL_R2);
+        view.label('r₁=1', C.r1, 0.45, { color: COL_R1, align: 'center', font: '11px monospace' });
+        view.label('r₂=3', C.r2, 0.45, { color: COL_R2, align: 'center', font: '11px monospace' });
+        if (Math.abs(C.a) > 0.01) {
+          infoBox('f(x) = ' + buildEq(C.a, b, c), W/2, 22, COL_PAR);
+        } else {
+          infoBox(T('a = 0 — to już nie jest wielomian kwadratowy', 'a = 0 — no longer a quadratic polynomial'), W/2, 22, COL_A);
+        }
+        ctx.save();
+        ctx.font = '10px monospace';
+        ctx.fillStyle = COL_A + '90';
+        ctx.textAlign = 'right';
+        ctx.fillText(T('rodzina: a·(x−1)(x−3)', 'family: a·(x−1)(x−3)'), W - 12, H - 10);
+        ctx.restore();
+      },
+    },
+  ];
+
+  initWarsztat({
+    canvasId: 'cv',
+    challenges,
+    lsKey: 'warsztat:vieta:completed',
+    onFrame({ ch }) {
+      initView();
+      view.clear();
+      if (ch.drawBackground === 'graph') {
+        view.drawGrid({ color: 'rgba(255,255,255,0.04)' });
+        view.drawAxes({ color: 'rgba(255,255,255,0.2)', arrows: false, labels: true, tickSize: 3 });
+      }
+    },
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Funkcja liniowa — Interaktywna wizualizacja</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e0e12; font-family: monospace; display: flex; justify-content: center; padding: 2rem 1rem; min-height: 100vh; }
+  .wrap { width: 100%; max-width: 640px; }
+  canvas { width: 100%; display: block; border-radius: 10px 10px 0 0; }
+  .panel { background: #16161a; border: 0.5px solid rgba(255,255,255,.1); border-top: 0.5px solid rgba(255,255,255,.07); border-radius: 0 0 10px 10px; padding: .875rem 1.25rem; }
+  #qf { margin: 0 0 5px; font-size: 16px; font-weight: 500; color: #58C4DD; letter-spacing: .02em; }
+  #qd { margin: 0 0 10px; font-size: 13px; line-height: 1.65; color: rgba(255,255,255,.62); min-height: 48px; }
+  .sliders { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+  .slider-row { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,.45); }
+  .slider-row span.lbl { font-family: monospace; min-width: 36px; }
+  .slider-row input[type=range] { flex: 1; accent-color: #58C4DD; }
+  .slider-row span.val { font-family: monospace; min-width: 46px; text-align: right; }
+  .nav { display: flex; align-items: center; justify-content: space-between; }
+  button { background: transparent; border: 0.5px solid rgba(255,255,255,.25); color: rgba(255,255,255,.7); padding: 5px 14px; font-size: 13px; border-radius: 6px; cursor: pointer; font-family: monospace; transition: background .15s; }
+  button:hover { background: rgba(255,255,255,.08); }
+  button:disabled { opacity: .3; cursor: default; }
+  #qdots { display: flex; gap: 8px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; cursor: pointer; background: rgba(255,255,255,.18); transition: background .2s; }
+  .dot.active { background: #58C4DD; }
+  .slider-group { display: none; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="qc" width="600" height="310"></canvas>
+  <div class="panel">
+    <p id="qf"></p>
+    <p id="qd"></p>
+
+    <div id="sl_mb" class="slider-group">
+      <div class="sliders">
+        <div class="slider-row">
+          <span class="lbl" style="color:#58C4DD;">m =</span>
+          <input type="range" id="s_m" min="-3" max="3" step="0.1" value="1">
+          <span class="val" id="v_m" style="color:#58C4DD;">1.0</span>
+        </div>
+        <div class="slider-row">
+          <span class="lbl" style="color:#FFD166;">b =</span>
+          <input type="range" id="s_b" min="-4" max="4" step="0.1" value="0">
+          <span class="val" id="v_b" style="color:#FFD166;">0.0</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="sl_slope" class="slider-group">
+      <div class="sliders">
+        <div class="slider-row">
+          <span class="lbl" style="color:#58C4DD;">m =</span>
+          <input type="range" id="s_m2" min="-3" max="3" step="0.1" value="1">
+          <span class="val" id="v_m2" style="color:#58C4DD;">1.0</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="sl_par" class="slider-group">
+      <div class="sliders">
+        <div class="slider-row">
+          <span class="lbl" style="color:#58C4DD;">m =</span>
+          <input type="range" id="s_m4" min="-3" max="3" step="0.1" value="1">
+          <span class="val" id="v_m4" style="color:#58C4DD;">1.0</span>
+        </div>
+        <div class="slider-row">
+          <span class="lbl" style="color:#FFD166;">b =</span>
+          <input type="range" id="s_b4" min="-4" max="4" step="0.1" value="1">
+          <span class="val" id="v_b4" style="color:#FFD166;">1.0</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="sl_proof" class="slider-group">
+      <div class="sliders">
+        <div class="slider-row">
+          <span class="lbl" style="color:#58C4DD;">m =</span>
+          <input type="range" id="s_proof" min="-2" max="2" step="0.1" value="2">
+          <span class="val" id="v_proof" style="color:#58C4DD;">2.0</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="sl_sys" class="slider-group">
+      <div class="sliders">
+        <div class="slider-row">
+          <span class="lbl" style="color:#58C4DD;">m1=</span>
+          <input type="range" id="s_m5a" min="-3" max="3" step="0.1" value="1">
+          <span class="val" id="v_m5a" style="color:#58C4DD;">1.0</span>
+        </div>
+        <div class="slider-row">
+          <span class="lbl" style="color:#58C4DD;">b1=</span>
+          <input type="range" id="s_b5a" min="-4" max="4" step="0.1" value="0">
+          <span class="val" id="v_b5a" style="color:#58C4DD;">0.0</span>
+        </div>
+        <div class="slider-row">
+          <span class="lbl" style="color:#FF6B35;">m2=</span>
+          <input type="range" id="s_m5b" min="-3" max="3" step="0.1" value="-0.5">
+          <span class="val" id="v_m5b" style="color:#FF6B35;">-0.5</span>
+        </div>
+        <div class="slider-row">
+          <span class="lbl" style="color:#FF6B35;">b2=</span>
+          <input type="range" id="s_b5b" min="-4" max="4" step="0.1" value="2">
+          <span class="val" id="v_b5b" style="color:#FF6B35;">2.0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav">
+      <button id="qprev">&larr; wstecz</button>
+      <div id="qdots"></div>
+      <button id="qnext">dalej &rarr;</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { GraphView } from '../lib/graph-core.js';
+
+(function(){
+const LANG = new URLSearchParams(window.location.search).get('lang') || 'pl';
+const T = (pl, en) => LANG === 'pl' ? pl : en;
+
+const cv=document.getElementById('qc'),cx=cv.getContext('2d');
+const W=600,H=310;
+
+const CYAN='#58C4DD',ORANGE='#FF6B35',GOLD='#FFD166',GREEN='#83C167',PURPLE='#b07cd8';
+
+let stage=0;
+// Stage 0 params
+let s0m=1,s0b=0;
+// Stage 1 params
+let s1m=1;
+// Stage 2 params - draggable points
+let p1={x:-2,y:-1},p2={x:2,y:2};
+let dragging=null;
+// Stage 3 params
+let s3m=1,s3b=1;
+// Stage 4 params
+let s4m1=1,s4b1=0,s4m2=-0.5,s4b2=2;
+let s_proof=2;
+
+const stages=[
+  {f:'y = mx + b',
+   d:T('Ustaw nachylenie m i wyraz wolny b. Tr\u00F3jk\u0105t przyrost/odcinek pokazuje, jak m kontroluje stromizn\u0119.','Adjust slope m and intercept b. The rise/run triangle shows how m controls steepness.'),
+   sl:'sl_mb'},
+  {f:'y = mx  (b = 0)',
+   d:T('Proste przechodz\u0105ce przez pocz\u0105tek uk\u0142adu. Przeci\u0105gnij m: nachylenie dodatnie \u2014 prosta ro\u015Bnie, ujemne \u2014 maleje, zero \u2014 pozioma.','Lines through the origin. Drag m: positive slope \u2014 line rises, negative \u2014 line falls, zero \u2014 horizontal line.'),
+   sl:'sl_slope'},
+  {f:T('Dwa punkty wyznaczaj\u0105 prost\u0105','Two points define a line'),
+   d:T('Przeci\u0105gnij dwa punkty. Nachylenie obliczane jako m = (y\u2082 \u2212 y\u2081) / (x\u2082 \u2212 x\u2081).','Drag the two points. Slope is computed as m = (y\u2082 \u2212 y\u2081) / (x\u2082 \u2212 x\u2081).'),
+   sl:''},
+  {f:T('R\u00F3wnoleg\u0142o\u015B\u0107 i prostopad\u0142o\u015B\u0107','Parallel & Perpendicular'),
+   d:T('Proste r\u00F3wnoleg\u0142e maj\u0105 to samo nachylenie \u2014 id\u0105 w tym samym kierunku, wi\u0119c nigdy si\u0119 nie spotkaj\u0105. A prostopad\u0142e? Obr\u00F3\u0107 tr\u00F3jk\u0105t nachylenia o 90\u00B0: przyprostok\u0105tne zamieniaj\u0105 si\u0119 miejscami i zmienia si\u0119 znak. Dlatego iloczyn nachyle\u0144 wynosi \u22121. Intuicyjnie: obr\u00F3t o 90\u00B0 zamienia wzrost \u0394y\/\u0394x na ujemny spadek w drug\u0105 stron\u0119 \u2212\u0394x\/\u0394y, wi\u0119c iloczyn nachyle\u0144 daje \u22121. Przesu\u0144 suwak m i obserwuj oba przypadki.','Parallel lines have the same slope \u2014 they go the same direction, so they never meet. Perpendicular? Rotate the slope triangle 90\u00B0: the sides swap and the sign flips. That\u2019s why the product of slopes is \u22121. Intuitively: a 90\u00B0 rotation turns the rise \u0394y\/\u0394x into a negative reciprocal \u2212\u0394x\/\u0394y, so the product of slopes is \u22121. Move the slider and watch both cases.'),
+   sl:'sl_par'},
+  {f:T('Dow\u00F3d: dlaczego m\u2081\u00B7m\u2082 = \u22121?','Proof: why m\u2081\u00B7m\u2082 = \u22121?'),
+   d:T('Obr\u00F3\u0107 tr\u00F3jk\u0105t rise\/run o 90\u00B0. Nogi zamieniaj\u0105 si\u0119 miejscami (ze zmian\u0105 znaku) \u2014 dlatego iloczyn = \u22121. R\u00F3wnoleg\u0142e: ten sam k\u0105t \u03B8 z osi\u0105 x \u2192 to samo m = tg(\u03B8).',
+     'Rotate the rise\/run triangle 90\u00B0. Legs swap with a sign flip \u2014 so m\u2081\u00B7m\u2082 = \u22121. Parallel lines: same tilt angle \u03B8 means same m = tan(\u03B8).'),
+   sl:'sl_proof'},
+  {f:T('Uk\u0142ad dw\u00F3ch r\u00F3wna\u0144 liniowych','Systems of two linear equations'),
+   d:T('Dwie proste mog\u0105 si\u0119 przeci\u0105\u0107 (jedno rozwi\u0105zanie), by\u0107 r\u00F3wnoleg\u0142e (brak rozwi\u0105za\u0144) lub pokrywa\u0107 si\u0119 (niesko\u0144czenie wiele rozwi\u0105za\u0144).','Two lines can intersect (one solution), be parallel (no solution), or overlap (infinite solutions).'),
+   sl:'sl_sys'},
+];
+
+function fmtN(v){return v<0?'\u2212'+Math.abs(v).toFixed(1):v.toFixed(1);}
+
+/** Create a standard GraphView for the main canvas area */
+function makeView() {
+  return new GraphView(cx, { rect: [0,0,W,H], xRange: [-7,7], yRange: [-5,5] });
+}
+
+function renderDots(){
+  const dc=document.getElementById('qdots');
+  dc.innerHTML=stages.map((_,i)=>
+    `<span class="dot${i===stage?' active':''}" data-i="${i}"></span>`
+  ).join('');
+  dc.querySelectorAll('span').forEach(s=>s.addEventListener('click',()=>goStage(+s.dataset.i)));
+}
+
+function goStage(idx){
+  idx=Math.max(0,Math.min(stages.length-1,idx));
+  stage=idx;
+  const s=stages[idx];
+  document.getElementById('qf').innerHTML=s.f;
+  document.getElementById('qd').innerHTML=s.d;
+  document.querySelectorAll('.slider-group').forEach(el=>el.style.display='none');
+  if(s.sl)document.getElementById(s.sl).style.display='block';
+  document.getElementById('qprev').disabled=idx===0;
+  document.getElementById('qnext').disabled=idx===stages.length-1;
+  renderDots();
+}
+
+document.getElementById('qprev').addEventListener('click',()=>goStage(stage-1));
+document.getElementById('qnext').addEventListener('click',()=>goStage(stage+1));
+
+// Slider bindings
+function bindSlider(id,vid,cb){
+  const el=document.getElementById(id);
+  el.addEventListener('input',function(){
+    const v=+this.value;
+    document.getElementById(vid).textContent=v.toFixed(1);
+    cb(v);
+  });
+}
+bindSlider('s_m','v_m',v=>{s0m=v;});
+bindSlider('s_b','v_b',v=>{s0b=v;});
+bindSlider('s_m2','v_m2',v=>{s1m=v;});
+bindSlider('s_m4','v_m4',v=>{s3m=v;});
+bindSlider('s_b4','v_b4',v=>{s3b=v;});
+bindSlider('s_m5a','v_m5a',v=>{s4m1=v;});
+bindSlider('s_b5a','v_b5a',v=>{s4b1=v;});
+bindSlider('s_m5b','v_m5b',v=>{s4m2=v;});
+bindSlider('s_b5b','v_b5b',v=>{s4b2=v;});
+bindSlider('s_proof','v_proof',v=>{s_proof=v;});
+
+// Dragging for stage 2
+cv.addEventListener('mousedown',e=>{
+  if(stage!==2)return;
+  const v=makeView();
+  const r=cv.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
+  const scX=W/r.width,scY=H/r.height;
+  const mx=sx*scX,my=sy*scY;
+  const d1=Math.hypot(mx-v.px(p1.x),my-v.py(p1.y));
+  const d2=Math.hypot(mx-v.px(p2.x),my-v.py(p2.y));
+  if(d1<18)dragging=p1;
+  else if(d2<18)dragging=p2;
+});
+cv.addEventListener('mousemove',e=>{
+  if(!dragging)return;
+  const v=makeView();
+  const r=cv.getBoundingClientRect(),sx=e.clientX-r.left,sy=e.clientY-r.top;
+  const scX=W/r.width,scY=H/r.height;
+  const w=v.toWorld(sx*scX,sy*scY);
+  dragging.x=Math.round(w.x*2)/2;
+  dragging.y=Math.round(w.y*2)/2;
+  dragging.x=Math.max(-6,Math.min(6,dragging.x));
+  dragging.y=Math.max(-4,Math.min(4,dragging.y));
+});
+cv.addEventListener('mouseup',()=>{dragging=null;});
+cv.addEventListener('mouseleave',()=>{dragging=null;});
+// Touch support
+cv.addEventListener('touchstart',e=>{
+  if(stage!==2)return;
+  const v=makeView();
+  const t=e.touches[0];
+  const r=cv.getBoundingClientRect(),sx=t.clientX-r.left,sy=t.clientY-r.top;
+  const scX=W/r.width,scY=H/r.height;
+  const mx=sx*scX,my=sy*scY;
+  const d1=Math.hypot(mx-v.px(p1.x),my-v.py(p1.y));
+  const d2=Math.hypot(mx-v.px(p2.x),my-v.py(p2.y));
+  if(d1<25)dragging=p1;
+  else if(d2<25)dragging=p2;
+  if(dragging)e.preventDefault();
+},{passive:false});
+cv.addEventListener('touchmove',e=>{
+  if(!dragging)return;
+  e.preventDefault();
+  const v=makeView();
+  const t=e.touches[0];
+  const r=cv.getBoundingClientRect(),sx=t.clientX-r.left,sy=t.clientY-r.top;
+  const scX=W/r.width,scY=H/r.height;
+  const w=v.toWorld(sx*scX,sy*scY);
+  dragging.x=Math.round(w.x*2)/2;
+  dragging.y=Math.round(w.y*2)/2;
+  dragging.x=Math.max(-6,Math.min(6,dragging.x));
+  dragging.y=Math.max(-4,Math.min(4,dragging.y));
+},{passive:false});
+cv.addEventListener('touchend',()=>{dragging=null;});
+
+// ── Helper: draw an info overlay box with lines of text ──
+function drawOverlay(v, x, y, w, h, lines) {
+  cx.fillStyle='rgba(22,22,26,.88)';
+  cx.strokeStyle='rgba(255,255,255,.10)';
+  cx.lineWidth=.8;
+  cx.beginPath();cx.roundRect(x,y,w,h,6);cx.fill();cx.stroke();
+  lines.forEach(l => {
+    cx.fillStyle=l.color;
+    cx.font=l.font||'bold 13px monospace';
+    cx.textAlign='left';
+    cx.fillText(l.text,l.x,l.y);
+  });
+}
+
+// ── Stage renderers ──
+function drawStage0(){
+  const v=makeView();
+  v.clear(); v.drawGrid(); v.drawAxes();
+
+  const m=s0m,b=s0b;
+  const fn=x=>m*x+b;
+  v.plotFn(fn, { color: CYAN });
+
+  // Y-intercept point
+  v.dot(0, b, { color: GOLD });
+  v.label('(0, '+b.toFixed(1)+')', 0, b, { color: GOLD, font: 'bold 11px monospace', offsetX: 10, offsetY: -4 });
+
+  // Rise/run triangle
+  if(Math.abs(m)>0.05) {
+    v.slopeTriangle(fn, 0, { color: GOLD, run: 1,
+      runLabel: T('odcinek','run')+'=1',
+      riseLabel: T('przyrost','rise')+'='+m.toFixed(1) });
+  }
+
+  // Equation overlay
+  drawOverlay(v, 8, 8, 220, 34, [
+    { text: 'y = '+fmtN(m)+'x + '+fmtN(b), color: CYAN, font: 'bold 13px monospace', x: 18, y: 30 }
+  ]);
+}
+
+function drawStage1(){
+  const v=makeView();
+  v.clear(); v.drawGrid(); v.drawAxes();
+
+  const m=s1m;
+  // Draw ghost lines
+  for(let gm=-3;gm<=3;gm+=0.5){
+    if(Math.abs(gm-m)<0.05)continue;
+    v.plotFn(x=>gm*x, { color: CYAN, alpha: 0.06, lineWidth: 1 });
+  }
+  const fn=x=>m*x;
+  v.plotFn(fn, { color: CYAN });
+
+  if(Math.abs(m)>0.05) {
+    v.slopeTriangle(fn, 0, { color: GOLD, run: 1,
+      runLabel: T('odcinek','run')+'=1',
+      riseLabel: T('przyrost','rise')+'='+m.toFixed(1) });
+  }
+
+  // Origin dot
+  v.dot(0, 0, { color: GOLD });
+
+  // Slope label overlay
+  let label='';
+  if(m>0.05)label=T('nachylenie dodatnie \u2014 prosta ro\u015Bnie','positive slope \u2014 line rises');
+  else if(m<-0.05)label=T('nachylenie ujemne \u2014 prosta maleje','negative slope \u2014 line falls');
+  else label=T('nachylenie zerowe \u2014 prosta pozioma','zero slope \u2014 horizontal line');
+
+  drawOverlay(v, 8, 8, 250, 52, [
+    { text: 'y = '+fmtN(m)+'x', color: CYAN, font: 'bold 13px monospace', x: 18, y: 28 },
+    { text: label, color: 'rgba(255,255,255,.5)', font: '12px monospace', x: 18, y: 48 }
+  ]);
+}
+
+function drawStage2(){
+  const v=makeView();
+  v.clear(); v.drawGrid(); v.drawAxes();
+
+  const dx=p2.x-p1.x,dy=p2.y-p1.y;
+  if(Math.abs(dx)>0.01){
+    const m=dy/dx,b=p1.y-m*p1.x;
+    v.plotFn(x=>m*x+b, { color: CYAN, lineWidth: 2 });
+
+    // Rise/run triangle between the two points
+    v.segment(p1.x, p1.y, p2.x, p1.y, { color: GOLD, lineWidth: 1.5, dash: [4,3] });
+    v.segment(p2.x, p1.y, p2.x, p2.y, { color: GOLD, lineWidth: 1.5, dash: [4,3] });
+
+    // Labels on triangle
+    const midRunOy = dy>=0 ? 14 : -8;
+    v.label('\u0394x='+dx.toFixed(1), (p1.x+p2.x)/2, p1.y,
+      { color: 'rgba(255,209,102,.8)', font: 'bold 11px monospace', align: 'center', offsetY: midRunOy });
+    v.label('\u0394y='+dy.toFixed(1), p2.x, (p1.y+p2.y)/2,
+      { color: 'rgba(255,209,102,.8)', font: 'bold 11px monospace', offsetX: 6, offsetY: 4 });
+  } else {
+    // Vertical line
+    v.verticalLine(p1.x, { color: 'rgba(220,80,80,.7)', lineWidth: 2, dash: [] });
+  }
+
+  // Points
+  v.dot(p1.x, p1.y, { color: CYAN, radius: 7 });
+  v.dot(p2.x, p2.y, { color: ORANGE, radius: 7 });
+  v.label('P\u2081('+p1.x.toFixed(1)+', '+p1.y.toFixed(1)+')', p1.x, p1.y,
+    { color: CYAN, font: 'bold 11px monospace', offsetX: 10, offsetY: -6 });
+  v.label('P\u2082('+p2.x.toFixed(1)+', '+p2.y.toFixed(1)+')', p2.x, p2.y,
+    { color: ORANGE, font: 'bold 11px monospace', offsetX: 10, offsetY: -6 });
+
+  // Formula overlay
+  if(Math.abs(dx)>0.01){
+    const m=dy/dx, b=p1.y-m*p1.x;
+    drawOverlay(v, 8, 8, 280, 52, [
+      { text: 'm = (\u0394y)/(\u0394x) = '+dy.toFixed(1)+'/'+dx.toFixed(1)+' = '+m.toFixed(2),
+        color: GOLD, font: 'bold 13px monospace', x: 18, y: 28 },
+      { text: 'y = '+m.toFixed(2)+'x + '+b.toFixed(2),
+        color: 'rgba(255,255,255,.5)', font: '12px monospace', x: 18, y: 48 }
+    ]);
+  } else {
+    drawOverlay(v, 8, 8, 280, 52, [
+      { text: T('m = \u0394y/\u0394x \u2014 nieokre\u015Blone (pionowa)','m = \u0394y/\u0394x \u2014 undefined (vertical)'),
+        color: GOLD, font: 'bold 13px monospace', x: 18, y: 28 },
+      { text: 'x = '+p1.x.toFixed(1)+T(' (nie jest funkcj\u0105)',' (not a function)'),
+        color: 'rgba(220,80,80,.7)', font: '12px monospace', x: 18, y: 48 }
+    ]);
+  }
+}
+
+function drawStage3(){
+  const v=makeView();
+  v.clear(); v.drawGrid(); v.drawAxes();
+
+  const m=s3m,b=s3b;
+  // Original line
+  v.plotFn(x=>m*x+b, { color: CYAN });
+  // Parallel line (same m, b offset by 2)
+  const bPar=b-2;
+  v.plotFn(x=>m*x+bPar, { color: GREEN, alpha: 0.7, lineWidth: 2 });
+
+  // Perpendicular line
+  if(Math.abs(m)>0.05){
+    const mPerp=-1/m;
+    const bPerp=b;
+    v.plotFn(x=>mPerp*x+bPerp, { color: PURPLE, alpha: 0.7, lineWidth: 2 });
+
+    // Right angle marker at intersection (0, b)
+    const ix=0,iy=b;
+    const len=0.3;
+    const d1m=Math.sqrt(1+m*m),d2m=Math.sqrt(1+mPerp*mPerp);
+    const u1x=1/d1m,u1y=m/d1m,u2x=1/d2m,u2y=mPerp/d2m;
+    cx.strokeStyle='rgba(255,255,255,.3)';cx.lineWidth=1;
+    cx.beginPath();
+    cx.moveTo(v.px(ix+u1x*len),v.py(iy+u1y*len));
+    cx.lineTo(v.px(ix+u1x*len+u2x*len),v.py(iy+u1y*len+u2y*len));
+    cx.lineTo(v.px(ix+u2x*len),v.py(iy+u2y*len));
+    cx.stroke();
+
+    // Perp label
+    v.label('m\u2082 = '+mPerp.toFixed(2), 2, mPerp*2+bPerp,
+      { color: PURPLE, font: '12px monospace', offsetX: 0, offsetY: -8 });
+  } else {
+    // m=0: perpendicular is vertical
+    v.verticalLine(0, { color: PURPLE, lineWidth: 2, dash: [], alpha: 0.7 });
+    v.label(T('prostopad\u0142a: x = 0','perpendicular: x = 0'), 0, 0,
+      { color: PURPLE, font: '12px monospace', offsetX: 8, offsetY: -140 });
+  }
+
+  // Y-intercept dots
+  v.dot(0, b, { color: CYAN, radius: 5 });
+  v.dot(0, bPar, { color: GREEN, radius: 5 });
+
+  // Labels overlay
+  const overlayLines = [
+    { text: 'y = '+fmtN(m)+'x + '+fmtN(b), color: CYAN, font: 'bold 12px monospace', x: 18, y: 26 },
+    { text: T('r\u00F3wnoleg\u0142a','parallel')+':  y = '+fmtN(m)+'x + '+fmtN(bPar), color: GREEN, font: 'bold 12px monospace', x: 18, y: 44 },
+  ];
+  if(Math.abs(m)>0.05){
+    overlayLines.push({ text: T('prostopad\u0142a','perpendicular')+':  m\u2082 = '+(-1/m).toFixed(2), color: PURPLE, font: 'bold 12px monospace', x: 18, y: 62 });
+  } else {
+    overlayLines.push({ text: T('prostopad\u0142a:  prosta pionowa','perpendicular:  vertical line'), color: PURPLE, font: 'bold 12px monospace', x: 18, y: 62 });
+  }
+  drawOverlay(v, 8, 8, 265, 70, overlayLines);
+}
+
+function drawStageProof(){
+  // This stage uses a custom scale/origin for the proof diagram
+  const v=new GraphView(cx, { rect: [0,0,W,H], xRange: [-3.5,8], yRange: [-3.5,3.5], scale: 48 });
+  v.clear();
+  v.drawGrid({ color: 'rgba(255,255,255,0.04)' });
+  v.drawAxes({ color: 'rgba(255,255,255,.22)', lineWidth: 1.2, arrows: false });
+
+  const m=s_proof;
+  const absM=Math.abs(m);
+  const ext=3.8;
+
+  // Both lines
+  v.plotFn(x=>m*x, { color: CYAN, alpha: 0.53, lineWidth: 2 });
+  if(absM>0.15){
+    const mp=-1/m;
+    v.plotFn(x=>mp*x, { color: PURPLE, alpha: 0.53, lineWidth: 2 });
+  }
+
+  // Triangle 1: O(0,0), A(1,0), B(1,m) -- filled
+  cx.fillStyle='rgba(88,196,221,.13)';
+  cx.beginPath();
+  cx.moveTo(v.px(0),v.py(0));
+  cx.lineTo(v.px(1),v.py(0));
+  cx.lineTo(v.px(1),v.py(m));
+  cx.closePath();cx.fill();
+
+  // Triangle 1 dashed legs
+  v.segment(0, 0, 1, 0, { color: GOLD, lineWidth: 1.5, dash: [4,3] });
+  v.segment(1, 0, 1, m, { color: GOLD, lineWidth: 1.5, dash: [4,3] });
+  // Hypotenuse
+  v.segment(0, 0, 1, m, { color: CYAN, lineWidth: 2.5 });
+
+  // Right angle marker T1
+  const rz=0.11;
+  const d1=m>=0?1:-1;
+  cx.strokeStyle='rgba(255,255,255,.3)';cx.lineWidth=1;
+  cx.beginPath();
+  cx.moveTo(v.px(1-rz),v.py(0));
+  cx.lineTo(v.px(1-rz),v.py(rz*d1));
+  cx.lineTo(v.px(1),v.py(rz*d1));
+  cx.stroke();
+
+  // Triangle 1 labels
+  v.label('a=1', 0.5, 0, { color: GOLD, font: 'bold 12px monospace', align: 'center', offsetY: m>=0?14:-7 });
+  v.label('b='+m.toFixed(1), 1, m/2,
+    { color: CYAN, font: 'bold 12px monospace', align: m>=0?'left':'right', offsetX: m>=0?5:-5, offsetY: 4 });
+
+  if(absM>0.15){
+    const mp=-1/m;
+    // Triangle 2: O(0,0), C(m,0), D(m,-1) -- filled
+    cx.fillStyle='rgba(176,124,216,.13)';
+    cx.beginPath();
+    cx.moveTo(v.px(0),v.py(0));
+    cx.lineTo(v.px(m),v.py(0));
+    cx.lineTo(v.px(m),v.py(-1));
+    cx.closePath();cx.fill();
+
+    // Triangle 2 dashed legs
+    v.segment(0, 0, m, 0, { color: GOLD, lineWidth: 1.5, dash: [4,3] });
+    v.segment(m, 0, m, -1, { color: GOLD, lineWidth: 1.5, dash: [4,3] });
+    // Hypotenuse
+    v.segment(0, 0, m, -1, { color: PURPLE, lineWidth: 2.5 });
+
+    // Right angle marker T2
+    const d2=m>=0?-1:1;
+    cx.strokeStyle='rgba(255,255,255,.3)';cx.lineWidth=1;
+    cx.beginPath();
+    cx.moveTo(v.px(m+rz*d2),v.py(0));
+    cx.lineTo(v.px(m+rz*d2),v.py(-rz));
+    cx.lineTo(v.px(m),v.py(-rz));
+    cx.stroke();
+
+    // Triangle 2 labels
+    v.label('b='+m.toFixed(1), m/2, 0, { color: GOLD, font: 'bold 12px monospace', align: 'center', offsetY: -7 });
+    v.label('\u2212a', m, -0.5,
+      { color: PURPLE, font: 'bold 12px monospace', align: m>=0?'right':'left', offsetX: m>=0?-5:5, offsetY: 4 });
+
+    // Rotation arc B->D
+    const angB=Math.atan2(-m,1), angD=Math.atan2(1,m);
+    const rArc=v.scale*Math.sqrt(1+m*m)*0.32;
+    cx.beginPath();cx.strokeStyle='rgba(255,209,102,.5)';cx.lineWidth=1.2;cx.setLineDash([3,4]);
+    cx.arc(v.px(0),v.py(0),rArc,angB,angD,false);
+    cx.stroke();cx.setLineDash([]);
+
+    v.dot(1, m, { color: CYAN, radius: 4 });
+    v.dot(m, -1, { color: PURPLE, radius: 4 });
+  }
+  v.dot(0, 0, { color: GOLD, radius: 5 });
+
+  // Annotation box
+  const bx=298,by=12,bw=294,bh=absM>0.15?152:60;
+  cx.fillStyle='rgba(22,22,26,.92)';cx.strokeStyle='rgba(255,255,255,.1)';cx.lineWidth=.8;
+  cx.beginPath();cx.roundRect(bx,by,bw,bh,6);cx.fill();cx.stroke();
+  cx.font='12px monospace';cx.textAlign='left';
+  cx.fillStyle='rgba(255,255,255,.6)';
+  cx.fillText(T('Obracamy tr\u00F3jk\u0105t T1 o 90\u00B0:','Rotate triangle T1 by 90\u00B0:'),bx+10,by+17);
+  cx.fillStyle=CYAN;cx.font='bold 12px monospace';
+  cx.fillText('m\u2081 = b/a = '+m.toFixed(1)+'/1 = '+m.toFixed(1),bx+10,by+35);
+  if(absM>0.15){
+    const mp=-1/m;
+    cx.fillStyle=PURPLE;
+    cx.fillText('m\u2082 = \u2212a/b = \u22121/'+m.toFixed(1)+' = '+mp.toFixed(2),bx+10,by+53);
+    cx.fillStyle='rgba(255,255,255,.3)';cx.font='12px monospace';
+    cx.fillText('\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500',bx+10,by+66);
+    cx.fillStyle=GOLD;cx.font='bold 13px monospace';
+    cx.fillText('m\u2081\u00B7m\u2082 = '+m.toFixed(1)+'\u00B7('+mp.toFixed(2)+')',bx+10,by+83);
+    cx.fillStyle=GREEN;
+    cx.fillText('= '+(m*mp).toFixed(1)+' = \u22121 \u2713',bx+10,by+101);
+    cx.fillStyle='rgba(255,255,255,.38)';cx.font='12px monospace';
+    cx.fillText(T('Te same boki (a,b), tylko obr\u00F3cone.','Same legs (a,b), just rotated.'),bx+10,by+121);
+    cx.fillStyle=CYAN;cx.font='12px monospace';
+    cx.fillText('T1: run=a=1, rise=b='+m.toFixed(1),bx+10,by+136);
+    cx.fillStyle=PURPLE;
+    cx.fillText('T2: run=b='+m.toFixed(1)+', rise=\u2212a=\u22121',bx+10,by+151);
+  }
+}
+
+function drawStage4(){
+  const v=makeView();
+  v.clear(); v.drawGrid(); v.drawAxes();
+
+  const m1=s4m1,b1=s4b1,m2=s4m2,b2=s4b2;
+  v.plotFn(x=>m1*x+b1, { color: CYAN });
+  v.plotFn(x=>m2*x+b2, { color: ORANGE });
+
+  // Y-intercept dots
+  v.dot(0, b1, { color: CYAN, radius: 4 });
+  v.dot(0, b2, { color: ORANGE, radius: 4 });
+
+  const dm=m1-m2;
+  let caseLabel='',caseCol='';
+  if(Math.abs(dm)<0.001&&Math.abs(b1-b2)<0.001){
+    caseLabel=T('Ta sama prosta \u2014 niesko\u0144czenie wiele rozwi\u0105za\u0144','Same line \u2014 infinite solutions');
+    caseCol=GREEN;
+  } else if(Math.abs(dm)<0.001){
+    caseLabel=T('R\u00F3wnoleg\u0142e \u2014 brak rozwi\u0105za\u0144','Parallel \u2014 no solution');
+    caseCol='rgba(220,80,80,.85)';
+  } else {
+    const ix=(b2-b1)/dm,iy=m1*ix+b1;
+    caseLabel=T('Jedno rozwi\u0105zanie','One solution')+': ('+ix.toFixed(2)+', '+iy.toFixed(2)+')';
+    caseCol=GOLD;
+    v.dot(ix, iy, { color: GOLD, radius: 7 });
+    // Dashed crosshairs
+    v.segment(ix, 0, ix, iy, { color: GOLD, lineWidth: 1, dash: [3,4], alpha: 0.2 });
+    v.segment(0, iy, ix, iy, { color: GOLD, lineWidth: 1, dash: [3,4], alpha: 0.2 });
+    v.label('('+ix.toFixed(2)+', '+iy.toFixed(2)+')', ix, iy,
+      { color: GOLD, font: 'bold 11px monospace', offsetX: 10, offsetY: -8 });
+  }
+
+  // Overlay
+  drawOverlay(v, 8, 8, 290, 70, [
+    { text: 'L\u2081: y = '+fmtN(m1)+'x + '+fmtN(b1), color: CYAN, font: 'bold 12px monospace', x: 18, y: 26 },
+    { text: 'L\u2082: y = '+fmtN(m2)+'x + '+fmtN(b2), color: ORANGE, font: 'bold 12px monospace', x: 18, y: 44 },
+    { text: caseLabel, color: caseCol, font: 'bold 11px monospace', x: 18, y: 62 }
+  ]);
+}
+
+function tick(){
+  if(stage===0)drawStage0();
+  else if(stage===1)drawStage1();
+  else if(stage===2)drawStage2();
+  else if(stage===3)drawStage3();
+  else if(stage===4)drawStageProof();
+  else if(stage===5)drawStage4();
+  requestAnimationFrame(tick);
+}
+
+document.getElementById('qprev').innerHTML='&larr; '+T('wstecz','prev');
+document.getElementById('qnext').innerHTML=T('dalej','next')+' &rarr;';
+goStage(0);tick();
+})();
+</script>
+</body>
+</html>

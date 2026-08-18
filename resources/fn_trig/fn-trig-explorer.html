@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Funkcje trygonometryczne (okresowe)</title>
+</head>
+<body>
+<script type="module">
+import { VizCore, T, COLORS, drawTextC } from '../lib/viz-core.js';
+
+// Static proof content for click-to-expand overlays
+const PROOF_PERIOD = {
+  title: () => T('Okres sin(Bx) = 2\u03C0/B', 'Period of sin(Bx) = 2\u03C0/B'),
+  lines: [
+    { text: T('Okres T funkcji f: najmniejsza liczba T > 0 taka, \u017Ce', 'Period T of a function f: smallest T > 0 such that'), size: 11 },
+    { text: 'f(x + T) = f(x)  ' + T('dla ka\u017Cdego x', 'for all x'), size: 12, color: COLORS.YELLOW },
+    '',
+    { text: T('Dla sinusa: sin znakuje si\u0119 na okr\u0119gu jednostkowym.', 'For sine: sin completes one loop around the unit circle.'), size: 11 },
+    { text: T('Pe\u0142en obr\u00F3t to 2\u03C0 radian\u00F3w, wi\u0119c sin(x+2\u03C0) = sin(x).', 'Full revolution is 2\u03C0 radians, so sin(x+2\u03C0) = sin(x).'), size: 11 },
+    '',
+    { text: T('Przy sin(Bx): \u201Epr\u0119dko\u015B\u0107 k\u0105towa\u201D to B, wi\u0119c pe\u0142en obr\u00F3t', 'For sin(Bx): "angular speed" is B, so a full cycle'), size: 11 },
+    { text: T('zachodzi, gdy Bx zwi\u0119kszy si\u0119 o 2\u03C0, czyli x o 2\u03C0/B.', 'happens when Bx grows by 2\u03C0, i.e. x by 2\u03C0/B.'), size: 11 },
+    '',
+    { text: 'sin(B(x + 2\u03C0/B)) = sin(Bx + 2\u03C0) = sin(Bx)  \u2713', size: 12, color: COLORS.GREEN, bold: true },
+    '',
+    { text: 'T = 2\u03C0/B   \u220E', size: 14, color: COLORS.GREEN, bold: true },
+    '',
+    { text: T('B = 2  \u2192  T = \u03C0  (podw\u00F3jna cz\u0119stotliwo\u015B\u0107)', 'B = 2  \u2192  T = \u03C0  (double frequency)'), size: 10, color: COLORS.ORANGE },
+    { text: T('B = 0.5 \u2192  T = 4\u03C0  (po\u0142owa cz\u0119stotliwo\u015Bci)', 'B = 0.5 \u2192  T = 4\u03C0  (half frequency)'), size: 10, color: COLORS.ORANGE },
+  ],
+};
+
+const PROOF_AMPLITUDE = {
+  title: () => T('Amplituda A\u00B7sin(x) = |A|', 'Amplitude of A\u00B7sin(x) = |A|'),
+  lines: [
+    { text: T('Warto\u015Bci sin(x) le\u017C\u0105 w [\u22121, 1]  (tw. o ograniczono\u015Bci).', 'sin(x) values lie in [\u22121, 1]  (boundedness theorem).'), size: 11 },
+    '',
+    { text: T('Mno\u017C\u0105c przez A:', 'Multiplying by A:'), size: 11 },
+    { text: 'A\u00B7sin(x) \u2208 [\u2212|A|, |A|]', size: 13, color: COLORS.YELLOW, bold: true },
+    '',
+    { text: T('Maksimum osi\u0105gane, gdy sin(x)=1  (x = \u03C0/2 + 2k\u03C0).', 'Maximum when sin(x)=1  (x = \u03C0/2 + 2k\u03C0).'), size: 10, color: 'rgba(255,255,255,0.7)' },
+    { text: T('Minimum \u2014 gdy sin(x) = \u22121.', 'Minimum \u2014 when sin(x) = \u22121.'), size: 10, color: 'rgba(255,255,255,0.7)' },
+    '',
+    { text: T('Amplituda = po\u0142owa odleg\u0142o\u015Bci max \u2212 min:', 'Amplitude = half the peak-to-peak distance:'), size: 11 },
+    { text: '(|A| \u2212 (\u2212|A|))/2 = |A|', size: 12, color: COLORS.GREEN, bold: true },
+    '',
+    { text: 'Amplituda = |A|   \u220E', size: 14, color: COLORS.GREEN, bold: true },
+    '',
+    { text: T('A < 0 \u2192 wykres odbity przez o\u015B OX (amplituda wci\u0105\u017C |A|).', 'A < 0 \u2192 graph reflected across the x-axis (amplitude still |A|).'), size: 10, color: COLORS.ORANGE },
+  ],
+};
+import { GraphView } from '../lib/graph-core.js';
+
+function gv(cx, W, H) {
+  return new GraphView(cx, { xRange: [-1.45, 9.45], yRange: [-2.1, 2.1], rect: [0, 0, W, H] });
+}
+
+function drawTrigAxes(v, cx, W) {
+  // Axes lines
+  cx.strokeStyle = 'rgba(255,255,255,0.3)'; cx.lineWidth = 1.5;
+  cx.beginPath(); cx.moveTo(0, v.py(0)); cx.lineTo(W, v.py(0)); cx.stroke();
+  cx.beginPath(); cx.moveTo(v.px(0), 0); cx.lineTo(v.px(0), v.py(2.1)); cx.stroke();
+  // x-axis labels in pi
+  cx.font = '10px monospace'; cx.fillStyle = 'rgba(255,255,255,0.25)'; cx.textAlign = 'center';
+  [[-2,'\u22122\u03C0'],[-1.5,'\u22123\u03C0/2'],[-1,'\u2212\u03C0'],[-0.5,'\u2212\u03C0/2'],[0,'0'],
+   [0.5,'\u03C0/2'],[1,'\u03C0'],[1.5,'3\u03C0/2'],[2,'2\u03C0']].forEach(([k, lbl]) => {
+    const sx = v.px(k * Math.PI);
+    if (sx > 10 && sx < W - 10) cx.fillText(lbl, sx, v.py(0) + 14);
+  });
+  // y-axis ticks
+  [-1, 1].forEach(val => {
+    const sy = v.py(val);
+    cx.beginPath(); cx.moveTo(v.px(0) - 4, sy); cx.lineTo(v.px(0) + 4, sy);
+    cx.strokeStyle = 'rgba(255,255,255,0.2)'; cx.lineWidth = 1; cx.stroke();
+    cx.textAlign = 'right'; cx.fillText(val, v.px(0) - 7, sy + 4);
+  });
+}
+
+const { cx, W, H } = VizCore.init({
+  title: T('Funkcje trygon. (okresowe)', 'Trig Functions (periodic)'),
+  H: 360,
+  stages: [
+    // ── Stage 0: sin(x) — period, amplitude ──────────────────────
+    {
+      title: () => T('sin(x) — okres i amplituda', 'sin(x) — period and amplitude'),
+      desc:  () => T(
+        'sin(x) ma okres 2π (powtarza się co 2π) i amplitudę 1 (oscyluje między −1 a 1). Zmień A i B w A·sin(B·x).',
+        'sin(x) has period 2π (repeats every 2π) and amplitude 1 (oscillates between −1 and 1). Change A and B in A·sin(B·x).'
+      ),
+      sliders: [
+        { id: 'A', lbl: 'A', color: COLORS.CYAN,   min: 0.1, max: 2,   step: 0.1, val: 1 },
+        { id: 'B', lbl: 'B', color: COLORS.ORANGE, min: 0.25, max: 3,  step: 0.25, val: 1 },
+      ],
+      draw(cx, W, H, vals, proof) {
+        const A = vals.A, B = vals.B;
+        const v = gv(cx, W, H);
+        drawTrigAxes(v, cx, W);
+        // Reference sin(x) faint
+        v.plotFn(x => Math.sin(x), { color: 'rgba(88,196,221,0.2)', lineWidth: 1 });
+        // Modified
+        v.plotFn(x => A * Math.sin(B * x), { color: COLORS.CYAN, lineWidth: 2.5, glow: 4 });
+
+        // Period marker
+        const period = 2 * Math.PI / B;
+        v.segment(0, A, period, A, { color: 'rgba(255,209,102,0.5)', lineWidth: 1, dash: [4,3] });
+        cx.font = '11px monospace'; cx.textAlign = 'center';
+        cx.fillStyle = COLORS.YELLOW; cx.fillText('T = 2\u03C0/' + B + ' = ' + (Math.round(period * 100) / 100).toFixed(2), v.px(period / 2), v.py(A) - 10);
+
+        // Amplitude marker
+        const ampX = v.px(0) - 30;
+        cx.beginPath(); cx.moveTo(ampX, v.py(A)); cx.lineTo(ampX, v.py(-A));
+        cx.strokeStyle = 'rgba(88,196,221,0.5)'; cx.lineWidth = 1; cx.setLineDash([3,3]); cx.stroke(); cx.setLineDash([]);
+        cx.fillStyle = COLORS.CYAN; cx.fillText('A=' + A, ampX - 12, (v.py(A) + v.py(-A)) / 2);
+
+        cx.font = '13px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = COLORS.CYAN;
+        cx.fillText(A + '\u00B7sin(' + B + 'x)', 12, 22);
+        cx.fillStyle = 'rgba(255,255,255,0.4)';
+        cx.fillText('Okres T = 2\u03C0/' + B + ', Amplituda = ' + A, 12, 40);
+
+        // Two clickable proof tiles in the upper-right corner
+        const tX = W - 180, tY = 10;
+        cx.save();
+        cx.fillStyle = 'rgba(192,128,255,0.1)';
+        cx.fillRect(tX, tY, 170, 26);
+        cx.strokeStyle = 'rgba(192,128,255,0.4)';
+        cx.strokeRect(tX, tY, 170, 26);
+        cx.restore();
+        drawTextC(cx, T('dow\u00F3d: T = 2\u03C0/B', 'proof: T = 2\u03C0/B'), tX + 85, tY + 13, 'bold 10px monospace', COLORS.PURPLE);
+        proof.registerCell(tX, tY, 170, 26, PROOF_PERIOD);
+
+        const tX2 = W - 180, tY2 = 42;
+        cx.save();
+        cx.fillStyle = 'rgba(192,128,255,0.1)';
+        cx.fillRect(tX2, tY2, 170, 26);
+        cx.strokeStyle = 'rgba(192,128,255,0.4)';
+        cx.strokeRect(tX2, tY2, 170, 26);
+        cx.restore();
+        drawTextC(cx, T('dow\u00F3d: amplituda = |A|', 'proof: amplitude = |A|'), tX2 + 85, tY2 + 13, 'bold 10px monospace', COLORS.PURPLE);
+        proof.registerCell(tX2, tY2, 170, 26, PROOF_AMPLITUDE);
+      },
+    },
+
+    // ── Stage 1: cos(x) — shift relation to sin ───────────────────
+    {
+      title: () => T('cos(x) = sin(x + π/2)', 'cos(x) = sin(x + π/2)'),
+      desc:  () => T(
+        'Cosinus to sinus przesunięty o π/2 w lewo. Mają ten sam kształt, tylko inne położenie. Zmień przesunięcie fazowe.',
+        'Cosine is sine shifted left by π/2. Same shape, different position. Change the phase shift.'
+      ),
+      sliders: [
+        { id: 'phi', lbl: 'φ', color: COLORS.ORANGE, min: -2, max: 2, step: 0.1, val: 0 },
+      ],
+      draw(cx, W, H, vals) {
+        const phi = vals.phi;
+        const v = gv(cx, W, H);
+        drawTrigAxes(v, cx, W);
+        v.plotFn(x => Math.sin(x), { color: COLORS.CYAN, lineWidth: 2, glow: 4 });
+        v.plotFn(x => Math.sin(x + phi * Math.PI), { color: COLORS.ORANGE, lineWidth: 2, glow: 4 });
+        v.plotFn(x => Math.cos(x), { color: 'rgba(131,193,103,0.4)', lineWidth: 1.5 });
+
+        cx.font = '12px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = COLORS.CYAN;    cx.fillText('sin(x)', 12, 22);
+        cx.fillStyle = COLORS.ORANGE;  cx.fillText('sin(x + ' + phi.toFixed(1) + '\u03C0)', 12, 40);
+        cx.fillStyle = COLORS.GREEN;   cx.fillText('cos(x) \u2014 dla por\u00F3wnania', 12, 58);
+        if (Math.abs(phi - 0.5) < 0.05) {
+          cx.fillStyle = COLORS.YELLOW; cx.fillText('\u2191 to prawie cos(x)! \u03C6 = \u03C0/2', 12, 76);
+        }
+      },
+    },
+
+    // ── Stage 2: tan(x) ──────────────────────────────────────────
+    {
+      title: () => T('tan(x) = sin(x)/cos(x)', 'tan(x) = sin(x)/cos(x)'),
+      desc:  () => T(
+        'tan(x) nie jest ograniczony — dąży do ±∞ gdy cos(x)→0 (w ±π/2, ±3π/2,...). Okres to π, nie 2π.',
+        'tan(x) is unbounded — approaches ±∞ as cos(x)→0 (at ±π/2, ±3π/2,...). Period is π, not 2π.'
+      ),
+      sliders: [],
+      draw(cx, W, H) {
+        const v = gv(cx, W, H);
+        drawTrigAxes(v, cx, W);
+        // Asymptotes
+        [-1.5, -0.5, 0.5, 1.5].forEach(k => {
+          v.verticalLine(k * Math.PI, { color: 'rgba(255,107,53,0.3)', lineWidth: 1, dash: [4,4] });
+        });
+        // tan(x) — clip hard
+        v.plotFn(x => {
+          const cosv = Math.cos(x);
+          if (Math.abs(cosv) < 0.08) return NaN;
+          return Math.sin(x) / cosv;
+        }, { color: COLORS.YELLOW, lineWidth: 2.5, glow: 4 });
+        // sin and cos faint
+        v.plotFn(Math.sin, { color: 'rgba(88,196,221,0.3)', lineWidth: 1.5 });
+        v.plotFn(Math.cos, { color: 'rgba(255,107,53,0.3)', lineWidth: 1.5 });
+
+        cx.font = '12px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = COLORS.YELLOW; cx.fillText('tan(x) = sin(x)/cos(x)', 12, 22);
+        cx.fillStyle = COLORS.ORANGE; cx.fillText('asymptoty w x = \u00B1\u03C0/2, \u00B13\u03C0/2...', 12, 40);
+        cx.fillStyle = 'rgba(255,255,255,0.35)'; cx.fillText('Okres = \u03C0', 12, 58);
+      },
+    },
+
+    // ── Stage 3: All three — unit circle link ─────────────────────
+    {
+      title: () => T('Wszystkie trzy na kole jednostkowym', 'All three on the unit circle'),
+      desc:  () => T(
+        'Suwak obraca punkt na kole. sin = rzut na Y, cos = rzut na X, tan = odcinek styczny. Patrz jak wykresy budują się na bieżąco.',
+        'Slider rotates the point on the circle. sin = Y projection, cos = X projection, tan = tangent segment. Watch the graphs build up live.'
+      ),
+      sliders: [
+        { id: 'angle', lbl: 'θ', color: COLORS.CYAN, min: 0, max: 360, step: 1, val: 45 },
+      ],
+      draw(cx, W, H, vals) {
+        const theta = vals.angle * Math.PI / 180;
+        // Split canvas: left = unit circle, right = mini graph
+        const CX = 140, CY = H / 2, R = 110;
+
+        cx.beginPath(); cx.arc(CX, CY, R, 0, Math.PI * 2);
+        cx.strokeStyle = 'rgba(255,255,255,0.2)'; cx.lineWidth = 1.5; cx.stroke();
+        cx.beginPath(); cx.moveTo(CX - R - 10, CY); cx.lineTo(CX + R + 10, CY);
+        cx.moveTo(CX, CY - R - 10); cx.lineTo(CX, CY + R + 10);
+        cx.strokeStyle = 'rgba(255,255,255,0.3)'; cx.lineWidth = 1.5; cx.stroke();
+
+        const Px = CX + R * Math.cos(theta), Py = CY - R * Math.sin(theta);
+
+        // cos (x-projection)
+        cx.beginPath(); cx.moveTo(CX, CY); cx.lineTo(Px, CY);
+        cx.strokeStyle = COLORS.ORANGE; cx.lineWidth = 3; cx.stroke();
+        // sin (y-projection)
+        cx.beginPath(); cx.moveTo(Px, Py); cx.lineTo(Px, CY);
+        cx.strokeStyle = COLORS.GREEN; cx.lineWidth = 3; cx.stroke();
+        // radius
+        cx.beginPath(); cx.moveTo(CX, CY); cx.lineTo(Px, Py);
+        cx.strokeStyle = COLORS.CYAN; cx.lineWidth = 2.5; cx.stroke();
+
+        cx.beginPath(); cx.arc(Px, Py, 6, 0, Math.PI * 2);
+        cx.fillStyle = COLORS.CYAN; cx.shadowColor = COLORS.CYAN;
+        cx.shadowBlur = 10; cx.fill(); cx.shadowBlur = 0;
+
+        // Mini waveform on right side
+        const gx0 = 295, gW = W - gx0 - 10, gH = 80, gY = H / 2;
+        const gSC = gW / (2 * Math.PI);
+
+        cx.beginPath(); cx.moveTo(gx0, gY); cx.lineTo(gx0 + gW, gY);
+        cx.strokeStyle = 'rgba(255,255,255,0.2)'; cx.lineWidth = 1; cx.stroke();
+
+        // Draw sin wave
+        cx.beginPath();
+        for (let t = 0; t <= 2 * Math.PI; t += 0.05) {
+          const sx = gx0 + t * gSC, sy = gY - Math.sin(t) * gH / 2;
+          if (t === 0) cx.moveTo(sx, sy); else cx.lineTo(sx, sy);
+        }
+        cx.strokeStyle = COLORS.GREEN; cx.lineWidth = 1.5; cx.stroke();
+
+        // Dot on wave
+        const wx = gx0 + theta * gSC, wy = gY - Math.sin(theta) * gH / 2;
+        cx.beginPath(); cx.arc(wx % (gx0 + gW) || wx, wy, 5, 0, Math.PI * 2);
+        cx.fillStyle = COLORS.GREEN; cx.fill();
+
+        // Values
+        cx.font = '11px monospace'; cx.textAlign = 'left';
+        cx.fillStyle = COLORS.CYAN;   cx.fillText('θ = ' + vals.angle + '°', CX + R + 14, CY - 36);
+        cx.fillStyle = COLORS.GREEN;  cx.fillText('sin = ' + Math.sin(theta).toFixed(3), CX + R + 14, CY - 18);
+        cx.fillStyle = COLORS.ORANGE; cx.fillText('cos = ' + Math.cos(theta).toFixed(3), CX + R + 14, CY);
+        const tanV = Math.abs(Math.cos(theta)) > 0.01 ? Math.tan(theta).toFixed(3) : '∞';
+        cx.fillStyle = COLORS.YELLOW; cx.fillText('tan = ' + tanV, CX + R + 14, CY + 18);
+      },
+    },
+  ],
+});
+</script>
+</body>
+</html>
